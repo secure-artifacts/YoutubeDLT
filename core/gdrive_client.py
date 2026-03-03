@@ -12,6 +12,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import io
 import requests
+from utils.path_helpers import get_safe_path
 
 
 # Google Drive API 权限范围
@@ -180,6 +181,8 @@ class GDriveClient:
             raise Exception("未认证，请先调用 authenticate()")
         
         try:
+            local_path = get_safe_path(local_path)
+            
             # 确保目录存在
             os.makedirs(os.path.dirname(local_path), exist_ok=True)
             
@@ -291,6 +294,7 @@ class GDriveClient:
             
             request = self.service.files().export_media(fileId=file_id, mimeType=export_mime)
             
+            local_path = get_safe_path(local_path)
             with open(local_path, 'wb') as fh:
                 downloader = MediaIoBaseDownload(fh, request)
                 done = False

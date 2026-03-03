@@ -7,6 +7,7 @@ import json
 import time
 from typing import Optional, Callable, Dict, List
 from dataclasses import dataclass
+from utils.path_helpers import get_safe_path
 
 
 @dataclass
@@ -461,11 +462,14 @@ class RcloneWrapper:
             retries = rclone_settings.get('retries', 10)
             low_level_retries = rclone_settings.get('low_level_retries', 10)
             
+            # 使用绝对路径和长路径前缀
+            local_path_safe = get_safe_path(local_path)
+            
             # 构建rclone命令
             cmd = [
                 self.rclone_path, "copy",
                 f"{remote_name}:",  # 使用根目录，通过 --drive-root-folder-id 指定文件夹
-                local_path,
+                local_path_safe,
                 "--config", self.config_path,
                 # "--drive-root-folder-id", remote_path,  # 移动到下面判断
                 "--progress",
@@ -478,6 +482,7 @@ class RcloneWrapper:
                 "-v",  # 详细输出
                 "--use-server-modtime", # 使用服务器修改时间
                 "--ignore-case-sync",   # 忽略大小写差异（兼容Windows文件系统）
+                "--name-transform", r"all,regex=^(.{235}).+(\.[^.]{1,10})$/$1$2",  # 截断超长文件名但保留扩展名（/分隔符）
             ]
             
             # 如果指定了特定文件夹（且不是根目录），则添加过滤

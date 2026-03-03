@@ -8,6 +8,7 @@ from core.gdrive_client import GDriveClient, FileInfo
 from core.downloader import Downloader
 from database.models import Database, SyncTask
 from dateutil import parser as date_parser
+from utils.path_helpers import get_safe_path
 
 
 class SyncEngine:
@@ -97,7 +98,7 @@ class SyncEngine:
         to_skip = []
         
         for file_info in filtered_files:
-            local_path = os.path.join(local_folder, file_info.path)
+            local_path = get_safe_path(os.path.join(local_folder, file_info.path))
             
             decision = self.compare_files(file_info, local_path)
             
