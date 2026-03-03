@@ -8,6 +8,7 @@ from typing import Optional, Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from core.gdrive_client import GDriveClient, FileInfo
 from database.models import Database, DownloadProgress
+from utils.path_helpers import get_safe_path
 
 
 class Downloader:
@@ -204,7 +205,7 @@ class Downloader:
                 time.sleep(0.5)
             
             # 构建本地路径
-            local_path = os.path.join(base_local_path, file_info.path)
+            local_path = get_safe_path(os.path.join(base_local_path, file_info.path))
             
             # 检查是否已存在
             if os.path.exists(local_path):
