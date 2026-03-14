@@ -8,17 +8,17 @@ on:
 
 jobs:
   create-release:
-    runs-on: ubuntu-latest   # 这个 job 不需要特定系统，随便选一个快的
+    runs-on: ubuntu-latest
     permissions:
       contents: write
 
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}   # 可选，下面会解释
-
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6   # 升级到 v6 (Node 24 支持)
+
       - name: Create or Update Release
         id: create_release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.5.0   # 固定到最新兼容 Node 24 的版本
         with:
           tag_name: ${{ github.ref_name }}
           name: "GDriveSync ${{ github.ref_name }}"
@@ -39,11 +39,11 @@ jobs:
             （由 GitHub 自动生成或手动补充）
 
           generate_release_notes: true
-          draft: false          # 或 true，如果你想先 draft
+          draft: false
           prerelease: false
 
   build:
-    needs: create-release    # 必须等 release 创建好
+    needs: create-release
     strategy:
       matrix:
         os: [windows-latest, macos-latest]
@@ -55,12 +55,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6   # 升级到 v6
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6   # 升级到 v6
         with:
-          python-version: '3.10'
+          python-version: '3.12'   # 建议升级到 3.12，更稳定，yt-dlp 支持更好
           cache: 'pip'
 
       - name: Install Dependencies
@@ -69,12 +69,26 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      # 只针对 Windows: 安装 Inno Setup（因为 iscc 默认不可用）
+      - name: Install Inno Setup (Windows)
+        if: matrix.os == 'windows-latest'
+        run: choco install innosetup --yes
+
       - name: Build Windows (Installer)
         if: matrix.os == 'windows-latest'
         run: |
-          pyinstaller GDriveSync.spec
-          iscc installer.iss
-          # 假设最终输出是 dist/GDriveSync-Windows-Setup.exe
+          # 如果你有 GDriveSync.spec，就用 pyinstaller GDriveSync.spec
+          # 否则用命令行打包（推荐先这样测试）
+          pyinstaller --noconfirm --onedir --windowed --name "GDriveSync" \
+            --hidden-import=googleapiclient \
+            --hidden-import=google_auth_oauthlib \
+            --hidden-import=google.auth \
+            --hidden-import=PyQt6 \
+            --add-data "app_icon.ico;." \
+            main.py
+          # 假设 installer.iss 存在于仓库根目录
+          iscc installer.iss || echo "Inno Setup 编译失败，请检查 installer.iss 文件"
+          ls -la dist/   # 输出 dist 目录内容，便于 debug
 
       - name: Build macOS
         if: matrix.os == 'macos-latest'
@@ -85,13 +99,13 @@ jobs:
             main.py
           cd dist
           zip -r GDriveSync-macOS.zip GDriveSync.app
+          ls -la   # debug 输出
 
-      # Attest 只在对应平台执行
       - name: Attest Build Provenance (Windows)
         if: matrix.os == 'windows-latest'
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: 'dist/GDriveSync-Windows-Setup.exe'
+          subject-path: 'dist/GDriveSync-Windows-Setup.exe'   # 假设 iss 输出这个 exe 名
 
       - name: Attest Build Provenance (macOS)
         if: matrix.os == 'macos-latest'
@@ -99,19 +113,16 @@ jobs:
         with:
           subject-path: 'dist/GDriveSync-macOS.zip'
 
-      # 上传资产到已存在的 release（关键在这里）
       - name: Upload Windows Asset
         if: matrix.os == 'windows-latest'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.5.0
         with:
           tag_name: ${{ github.ref_name }}
-          files: dist/GDriveSync-Windows-Setup.exe
-          # 注意：这里不要再写 name / body / generate_release_notes
-          # 只上传文件即可，它会自动追加到已有 release
+          files: dist/GDriveSync-Windows-Setup.exe   # 改成 iss 实际输出的 exe 名
 
       - name: Upload macOS Asset
         if: matrix.os == 'macos-latest'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.5.0
         with:
           tag_name: ${{ github.ref_name }}
           files: dist/GDriveSync-macOS.zip
