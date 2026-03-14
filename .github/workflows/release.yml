@@ -25,11 +25,12 @@ jobs:
             ## YoutubeDLT ${{ github.ref_name }}
 
             YouTube 下载工具桌面版  
-            基于 **PyQt6 + yt-dlp**
+            基于 PyQt6 + yt-dlp
 
             ### 下载
-            Windows：YoutubeDLT-Windows.zip  
+            Windows：YoutubeDLT-Windows.exe  
             macOS：YoutubeDLT-macOS.zip
+
           generate_release_notes: true
           draft: false
           prerelease: false
@@ -61,7 +62,7 @@ jobs:
           cache: pip
 
 
-      - name: Install Dependencies
+      - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
@@ -79,10 +80,10 @@ jobs:
 
 
       # =========================
-      # Windows build
+      # Windows Build
       # =========================
 
-      - name: Build Windows
+      - name: Build Windows EXE
         if: matrix.os == 'windows-latest'
         shell: powershell
         run: |
@@ -90,9 +91,9 @@ jobs:
           pyinstaller `
             --noconfirm `
             --clean `
+            --onefile `
             --windowed `
-            --onedir `
-            --name "YoutubeDLT" `
+            --name YoutubeDLT `
             --icon app_icon.ico `
             --hidden-import yt_dlp `
             --hidden-import yt_dlp.utils `
@@ -105,15 +106,14 @@ jobs:
             --hidden-import certifi `
             main.py
 
+          mkdir release
+          move dist\YoutubeDLT.exe release\YoutubeDLT-Windows.exe
 
-          Compress-Archive `
-            -Path "dist/YoutubeDLT" `
-            -DestinationPath "dist/YoutubeDLT-Windows.zip" `
-            -Force
+          dir release
 
 
       # =========================
-      # macOS build
+      # macOS Build
       # =========================
 
       - name: Build macOS
@@ -124,9 +124,7 @@ jobs:
             --noconfirm \
             --clean \
             --windowed \
-            --onedir \
-            --name "YoutubeDLT" \
-            --icon app_icon.ico \
+            --name YoutubeDLT \
             --hidden-import yt_dlp \
             --hidden-import PyQt6.QtWidgets \
             --hidden-import PyQt6.QtCore \
@@ -134,12 +132,17 @@ jobs:
             --hidden-import certifi \
             main.py
 
-          cd dist
+          mkdir release
+          mv dist/YoutubeDLT.app release/
+
+          cd release
           zip -r YoutubeDLT-macOS.zip YoutubeDLT.app
+
+          ls -la
 
 
       # =========================
-      # 上传 Release
+      # Upload Release
       # =========================
 
       - name: Upload Windows
@@ -147,7 +150,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: dist/YoutubeDLT-Windows.zip
+          files: release/YoutubeDLT-Windows.exe
 
 
       - name: Upload macOS
@@ -155,4 +158,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: dist/YoutubeDLT-macOS.zip
+          files: release/YoutubeDLT-macOS.zip
