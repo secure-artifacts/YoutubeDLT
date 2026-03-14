@@ -4,57 +4,62 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 jobs:
+
   create-release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - name: Create or Update Release
-        uses: softprops/action-gh-release@v2.5.0
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: "YoutubeDLT ${{ github.ref_name }}"
+          name: YoutubeDLT ${{ github.ref_name }}
           body: |
             ## YoutubeDLT ${{ github.ref_name }}
 
-            YouTube 下载工具桌面版（基于 PyQt6 + yt-dlp）
+            YouTube 下载工具桌面版  
+            基于 **PyQt6 + yt-dlp**
 
-            ### 下载方式
-            - **Windows**：YoutubeDLT-Windows.zip 或 .exe（如果有 Inno Setup）
-            - **macOS**：YoutubeDLT-macOS.zip
-
-            首次运行可能需要授权 yt-dlp 更新或处理安全提示。
+            ### 下载
+            Windows：YoutubeDLT-Windows.zip  
+            macOS：YoutubeDLT-macOS.zip
           generate_release_notes: true
           draft: false
           prerelease: false
 
+
   build:
+
     needs: create-release
+
     strategy:
       matrix:
         os: [windows-latest, macos-latest]
+
     runs-on: ${{ matrix.os }}
+
     permissions:
       contents: write
-      attestations: write
-      id-token: write
 
     steps:
+
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
+
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-          cache: 'pip'
+          python-version: "3.12"
+          cache: pip
+
 
       - name: Install Dependencies
         run: |
@@ -62,93 +67,92 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Install Inno Setup (Windows)
-        if: matrix.os == 'windows-latest'
-        run: choco install innosetup --yes
 
-      # ────────────────────────────────────────────────
-      # Windows 构建（使用 PowerShell 反引号 ` 换行）
-      # ────────────────────────────────────────────────
+      # 安装 ffmpeg
+      - name: Install ffmpeg (Windows)
+        if: matrix.os == 'windows-latest'
+        run: choco install ffmpeg -y
+
+      - name: Install ffmpeg (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install ffmpeg
+
+
+      # =========================
+      # Windows build
+      # =========================
+
       - name: Build Windows
         if: matrix.os == 'windows-latest'
+        shell: powershell
         run: |
-          pyinstaller --noconfirm --onedir --windowed --name "YoutubeDLT" `
-            --hidden-import=yt_dlp `
-            --hidden-import=yt_dlp.compat._legacy `
-            --hidden-import=yt_dlp.utils `
-            --hidden-import=yt_dlp.extractor `
-            --hidden-import=yt_dlp.postprocessor `
-            --hidden-import=PyQt6.QtWidgets `
-            --hidden-import=PyQt6.QtCore `
-            --hidden-import=PyQt6.QtGui `
-            --hidden-import=PyQt6.sip `
-            --hidden-import=certifi `
-            --hidden-import=requests `
-            --add-data "app_icon.ico;." `
+
+          pyinstaller `
+            --noconfirm `
+            --clean `
+            --windowed `
+            --onedir `
+            --name "YoutubeDLT" `
+            --icon app_icon.ico `
+            --hidden-import yt_dlp `
+            --hidden-import yt_dlp.utils `
+            --hidden-import yt_dlp.extractor `
+            --hidden-import yt_dlp.postprocessor `
+            --hidden-import PyQt6.QtWidgets `
+            --hidden-import PyQt6.QtCore `
+            --hidden-import PyQt6.QtGui `
+            --hidden-import PyQt6.sip `
+            --hidden-import certifi `
             main.py
 
-          # 列出生成的文件，便于 debug
-          Get-ChildItem -Path dist -Recurse | Select-Object FullName, Length
 
-          # 如果有 installer.iss → 用 Inno Setup 打包
-          if (Test-Path "installer.iss") {
-            iscc installer.iss
-            Write-Output "Inno Setup 打包完成"
-            Get-ChildItem -Path . -Filter "*.exe" | Select-Object Name
-          } else {
-            Write-Output "没有找到 installer.iss，自动打包成 zip"
-            Compress-Archive -Path "dist/YoutubeDLT" -DestinationPath "dist/YoutubeDLT-Windows.zip" -Force
-          }
+          Compress-Archive `
+            -Path "dist/YoutubeDLT" `
+            -DestinationPath "dist/YoutubeDLT-Windows.zip" `
+            -Force
 
-      # ────────────────────────────────────────────────
-      # macOS 构建（bash 风格，使用 \ 换行）
-      # ────────────────────────────────────────────────
+
+      # =========================
+      # macOS build
+      # =========================
+
       - name: Build macOS
         if: matrix.os == 'macos-latest'
         run: |
-          pyinstaller --noconfirm --onedir --windowed --name "YoutubeDLT" \
+
+          pyinstaller \
+            --noconfirm \
+            --clean \
+            --windowed \
+            --onedir \
+            --name "YoutubeDLT" \
+            --icon app_icon.ico \
             --hidden-import yt_dlp \
             --hidden-import PyQt6.QtWidgets \
             --hidden-import PyQt6.QtCore \
             --hidden-import PyQt6.QtGui \
             --hidden-import certifi \
-            --add-data "app_icon.ico:." \
             main.py
 
           cd dist
           zip -r YoutubeDLT-macOS.zip YoutubeDLT.app
-          ls -la
 
-      # ────────────────────────────────────────────────
-      # Provenance Attestation（使用最新版 attest）
-      # ────────────────────────────────────────────────
-      - name: Attest Windows Artifact
+
+      # =========================
+      # 上传 Release
+      # =========================
+
+      - name: Upload Windows
         if: matrix.os == 'windows-latest'
-        uses: actions/attest@v4.1.0
-        with:
-          subject-path: 'dist/YoutubeDLT*'   # 匹配 .exe 或 .zip
-
-      - name: Attest macOS Artifact
-        if: matrix.os == 'macos-latest'
-        uses: actions/attest@v4.1.0
-        with:
-          subject-path: 'dist/YoutubeDLT-macOS.zip'
-
-      # ────────────────────────────────────────────────
-      # 上传到 Release（只上传对应平台的文件）
-      # ────────────────────────────────────────────────
-      - name: Upload Windows Asset
-        if: matrix.os == 'windows-latest'
-        uses: softprops/action-gh-release@v2.5.0
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: |
-            dist/YoutubeDLT-Windows.zip
-            dist/*.exe
+          files: dist/YoutubeDLT-Windows.zip
 
-      - name: Upload macOS Asset
+
+      - name: Upload macOS
         if: matrix.os == 'macos-latest'
-        uses: softprops/action-gh-release@v2.5.0
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           files: dist/YoutubeDLT-macOS.zip
