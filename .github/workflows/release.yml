@@ -74,6 +74,7 @@ jobs:
             --onedir \
             --windowed \
             --name YoutubeDLT \
+            --target-arch universal2 \
             --hidden-import yt_dlp \
             --hidden-import PyQt6.QtWidgets \
             --hidden-import PyQt6.QtCore \
