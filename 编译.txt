@@ -1,0 +1,13 @@
+python -m PyInstaller --onefile --console --clean --name "YouTube下载器" --add-binary "C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin\ffmpeg.exe;." --add-binary "C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin\ffprobe.exe;." 123.py
+
+
+
+
+
+python -m PyInstaller  --onefile --console --clean --name "YouTube下载器" --add-binary "C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin\ffmpeg.exe;." --add-binary "C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin\ffprobe.exe;." --icon app_icon.ico 123.py
+
+
+python -m PyInstaller --onefile --noconsole --clean --name "YouTube下载器" --icon app_icon.ico --add-binary "C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin\ffmpeg.exe;." --add-binary "C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin\ffprobe.exe;." --hidden-import yt_dlp --hidden-import certifi 123.py
+
+
+
