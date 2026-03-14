@@ -7,82 +7,111 @@ on:
       - 'v*'
 
 jobs:
+  create-release:
+    runs-on: ubuntu-latest   # 这个 job 不需要特定系统，随便选一个快的
+    permissions:
+      contents: write
+
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}   # 可选，下面会解释
+
+    steps:
+      - name: Create or Update Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "GDriveSync ${{ github.ref_name }}"
+          body: |
+            ## 🚀 GDriveSync ${{ github.ref_name }}
+
+            ### Windows 安装
+            1. 下载 `GDriveSync-Windows-Setup.exe`
+            2. 双击运行，按提示安装
+            3. 首次运行点击「授权」完成 Google 登录
+
+            ### macOS 安装
+            1. 下载 `GDriveSync-macOS.zip`
+            2. 解压后拖到「应用程序」文件夹
+            3. 首次运行授权
+
+            ### 更新内容
+            （由 GitHub 自动生成或手动补充）
+
+          generate_release_notes: true
+          draft: false          # 或 true，如果你想先 draft
+          prerelease: false
+
   build:
+    needs: create-release    # 必须等 release 创建好
     strategy:
       matrix:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     permissions:
-      id-token: write
       contents: write
       attestations: write
-      
+      id-token: write
+
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-        cache: 'pip'
-        
-    - name: Install Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pyinstaller
-        
-    - name: Build Windows (Installer)
-      if: matrix.os == 'windows-latest'
-      run: |
-        pyinstaller GDriveSync.spec
-        iscc installer.iss
-        
-    - name: Build macOS
-      if: matrix.os == 'macos-latest'
-      run: |
-        pyinstaller --noconfirm --onedir --windowed --name "GDriveSync" \
-          --hidden-import "googleapiclient" \
-          --collect-all "google_auth_oauthlib" \
-          main.py
-        cd dist
-        zip -r GDriveSync-macOS.zip GDriveSync.app
-        
-    - name: Attest Build Provenance (Windows)
-      if: matrix.os == 'windows-latest'
-      uses: actions/attest-build-provenance@v2
-      with:
-        subject-path: 'dist/GDriveSync-Windows-Setup.exe'
-        
-    - name: Attest Build Provenance (macOS)
-      if: matrix.os == 'macos-latest'
-      uses: actions/attest-build-provenance@v2
-      with:
-        subject-path: 'dist/GDriveSync-macOS.zip'
-        
-    - name: Upload to Release (Windows)
-      if: matrix.os == 'windows-latest'
-      uses: softprops/action-gh-release@v2
-      with:
-        files: dist/GDriveSync-Windows-Setup.exe
-        generate_release_notes: true
-        name: "GDriveSync ${{ github.ref_name }}"
-        body: |
-          ## 🚀 GDriveSync ${{ github.ref_name }} — Windows 版本
-          
-          ### 安装方法
-          1. 下载 `GDriveSync-Windows-Setup.exe`
-          2. 双击运行安装包，按提示完成安装
-          3. 首次运行后点击「授权」，在浏览器中完成 Google 账号授权
-          
-          ### 更新内容
-          （以下由 GitHub 自动生成）
-        
-    - name: Upload to Release (macOS)
-      if: matrix.os == 'macos-latest'
-      uses: softprops/action-gh-release@v2
-      with:
-        files: dist/GDriveSync-macOS.zip
-        generate_release_notes: true
-        name: "GDriveSync ${{ github.ref_name }}"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Windows (Installer)
+        if: matrix.os == 'windows-latest'
+        run: |
+          pyinstaller GDriveSync.spec
+          iscc installer.iss
+          # 假设最终输出是 dist/GDriveSync-Windows-Setup.exe
+
+      - name: Build macOS
+        if: matrix.os == 'macos-latest'
+        run: |
+          pyinstaller --noconfirm --onedir --windowed --name "GDriveSync" \
+            --hidden-import "googleapiclient" \
+            --collect-all "google_auth_oauthlib" \
+            main.py
+          cd dist
+          zip -r GDriveSync-macOS.zip GDriveSync.app
+
+      # Attest 只在对应平台执行
+      - name: Attest Build Provenance (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'dist/GDriveSync-Windows-Setup.exe'
+
+      - name: Attest Build Provenance (macOS)
+        if: matrix.os == 'macos-latest'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'dist/GDriveSync-macOS.zip'
+
+      # 上传资产到已存在的 release（关键在这里）
+      - name: Upload Windows Asset
+        if: matrix.os == 'windows-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: dist/GDriveSync-Windows-Setup.exe
+          # 注意：这里不要再写 name / body / generate_release_notes
+          # 只上传文件即可，它会自动追加到已有 release
+
+      - name: Upload macOS Asset
+        if: matrix.os == 'macos-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: dist/GDriveSync-macOS.zip
