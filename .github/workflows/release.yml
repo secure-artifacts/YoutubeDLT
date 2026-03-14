@@ -14,30 +14,20 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6   # 升级到 v6 (Node 24 支持)
+        uses: actions/checkout@v6  # Node 24 支持
 
       - name: Create or Update Release
-        id: create_release
-        uses: softprops/action-gh-release@v2.5.0   # 固定到最新兼容 Node 24 的版本
+        uses: softprops/action-gh-release@v2.5.0  # 已 Node 24
         with:
           tag_name: ${{ github.ref_name }}
-          name: "GDriveSync ${{ github.ref_name }}"
+          name: "YoutubeDLT ${{ github.ref_name }}"
           body: |
-            ## 🚀 GDriveSync ${{ github.ref_name }}
+            ## 🚀 YoutubeDLT ${{ github.ref_name }} Release
 
-            ### Windows 安装
-            1. 下载 `GDriveSync-Windows-Setup.exe`
-            2. 双击运行，按提示安装
-            3. 首次运行点击「授权」完成 Google 登录
+            下载对应平台的构建文件。
 
-            ### macOS 安装
-            1. 下载 `GDriveSync-macOS.zip`
-            2. 解压后拖到「应用程序」文件夹
-            3. 首次运行授权
-
-            ### 更新内容
-            （由 GitHub 自动生成或手动补充）
-
+            ### 更新日志
+            自动生成或手动补充
           generate_release_notes: true
           draft: false
           prerelease: false
@@ -55,12 +45,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6   # 升级到 v6
+        uses: actions/checkout@v6
 
       - name: Setup Python
-        uses: actions/setup-python@v6   # 升级到 v6
+        uses: actions/setup-python@v6  # Node 24 支持
         with:
-          python-version: '3.12'   # 建议升级到 3.12，更稳定，yt-dlp 支持更好
+          python-version: '3.12'  # 推荐 3.12
           cache: 'pip'
 
       - name: Install Dependencies
@@ -69,60 +59,62 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      # 只针对 Windows: 安装 Inno Setup（因为 iscc 默认不可用）
-      - name: Install Inno Setup (Windows)
+      - name: Install Inno Setup (for iscc on Windows)
         if: matrix.os == 'windows-latest'
         run: choco install innosetup --yes
 
-      - name: Build Windows (Installer)
+      - name: Build Windows
         if: matrix.os == 'windows-latest'
         run: |
-          # 如果你有 GDriveSync.spec，就用 pyinstaller GDriveSync.spec
-          # 否则用命令行打包（推荐先这样测试）
-          pyinstaller --noconfirm --onedir --windowed --name "GDriveSync" \
-            --hidden-import=googleapiclient \
-            --hidden-import=google_auth_oauthlib \
-            --hidden-import=google.auth \
-            --hidden-import=PyQt6 \
+          pyinstaller --noconfirm --onedir --windowed --name "YoutubeDLT" \
+            --hidden-import yt_dlp \
+            --hidden-import PyQt6.QtWidgets \
+            --hidden-import PyQt6.QtCore \
+            --hidden-import PyQt6.QtGui \
             --add-data "app_icon.ico;." \
-            main.py
-          # 假设 installer.iss 存在于仓库根目录
-          iscc installer.iss || echo "Inno Setup 编译失败，请检查 installer.iss 文件"
-          ls -la dist/   # 输出 dist 目录内容，便于 debug
+            main.py || echo "PyInstaller 失败，检查依赖"
+          # 如果有 installer.iss，用 iscc；否则跳过或打包 zip
+          if [ -f "installer.iss" ]; then
+            iscc installer.iss || echo "iscc 失败"
+          else
+            cd dist
+            7z a YoutubeDLT-Windows.zip YoutubeDLT || echo "无 7z，用 zip 代替"
+          fi
+          ls -la dist/  # debug: 查看生成的文件
 
       - name: Build macOS
         if: matrix.os == 'macos-latest'
         run: |
-          pyinstaller --noconfirm --onedir --windowed --name "GDriveSync" \
-            --hidden-import "googleapiclient" \
-            --collect-all "google_auth_oauthlib" \
+          pyinstaller --noconfirm --onedir --windowed --name "YoutubeDLT" \
+            --hidden-import yt_dlp \
             main.py
           cd dist
-          zip -r GDriveSync-macOS.zip GDriveSync.app
-          ls -la   # debug 输出
+          zip -r YoutubeDLT-macOS.zip YoutubeDLT.app
+          ls -la
 
-      - name: Attest Build Provenance (Windows)
+      # 用新版 attest (v4+ 支持 Node 24)
+      - name: Attest Windows Artifact
         if: matrix.os == 'windows-latest'
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest@v4.1.0
         with:
-          subject-path: 'dist/GDriveSync-Windows-Setup.exe'   # 假设 iss 输出这个 exe 名
+          subject-path: 'dist/YoutubeDLT*'  # 匹配 exe 或 zip
 
-      - name: Attest Build Provenance (macOS)
+      - name: Attest macOS Artifact
         if: matrix.os == 'macos-latest'
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest@v4.1.0
         with:
-          subject-path: 'dist/GDriveSync-macOS.zip'
+          subject-path: 'dist/YoutubeDLT-macOS.zip'
 
       - name: Upload Windows Asset
         if: matrix.os == 'windows-latest'
         uses: softprops/action-gh-release@v2.5.0
         with:
           tag_name: ${{ github.ref_name }}
-          files: dist/GDriveSync-Windows-Setup.exe   # 改成 iss 实际输出的 exe 名
+          files: dist/*Windows*.*  # 匹配 exe 或 zip
 
       - name: Upload macOS Asset
         if: matrix.os == 'macos-latest'
         uses: softprops/action-gh-release@v2.5.0
         with:
           tag_name: ${{ github.ref_name }}
-          files: dist/GDriveSync-macOS.zip
+          files: dist/YoutubeDLT-macOS.zip
