@@ -15,7 +15,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -31,13 +31,8 @@ jobs:
         include:
           - os: windows-latest
             name: Windows
-            arch: x64  # 不影響
-          - os: macos-latest          # Apple Silicon (arm64)
-            name: macOS-AppleSilicon
-            arch: arm64
-          - os: macos-26-large        # Intel (x86_64)，用 larger runner
-            name: macOS-Intel
-            arch: x86_64
+          - os: macos-latest          # arm64 (M 系列原生)
+            name: macOS
 
     runs-on: ${{ matrix.os }}
     permissions:
@@ -45,7 +40,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -64,10 +59,9 @@ jobs:
         run: choco install ffmpeg -y
 
       - name: Install ffmpeg macOS
-        if: startsWith(matrix.os, 'macos-')
+        if: matrix.os == 'macos-latest'
         run: brew install ffmpeg
 
-      # Windows Build (不變)
       - name: Build Windows
         if: matrix.os == 'windows-latest'
         shell: powershell
@@ -85,13 +79,11 @@ jobs:
             --hidden-import PyQt6.QtGui `
             --hidden-import certifi `
             main.py
-
           mkdir release
           Move-Item -Path dist\YoutubeDLT.exe -Destination release\YoutubeDLT-Windows.exe
 
-      # macOS Builds
-      - name: Build macOS (${{ matrix.name }})
-        if: startsWith(matrix.os, 'macos-')
+      - name: Build macOS (Apple Silicon)
+        if: matrix.os == 'macos-latest'
         run: |
           pyinstaller \
             --noconfirm \
@@ -104,14 +96,11 @@ jobs:
             --hidden-import PyQt6.QtGui \
             --hidden-import certifi \
             main.py
-
           mkdir release
           mv dist/YoutubeDLT.app release/
-
           cd release
-          zip -r YoutubeDLT-${{ matrix.name }}.zip YoutubeDLT.app
+          zip -r YoutubeDLT-macOS.zip YoutubeDLT.app
 
-      # Uploads
       - name: Upload Windows
         if: matrix.os == 'windows-latest'
         uses: softprops/action-gh-release@v2
@@ -119,16 +108,9 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: release/YoutubeDLT-Windows.exe
 
-      - name: Upload macOS Apple Silicon
-        if: matrix.name == 'macOS-AppleSilicon'
+      - name: Upload macOS (Apple Silicon)
+        if: matrix.os == 'macos-latest'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: release/YoutubeDLT-macOS-AppleSilicon.zip
-
-      - name: Upload macOS Intel
-        if: matrix.name == 'macOS-Intel'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: release/YoutubeDLT-macOS-Intel.zip
+          files: release/YoutubeDLT-macOS.zip
