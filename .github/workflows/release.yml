@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2.5.0
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: YoutubeDLT ${{ github.ref_name }}
@@ -31,12 +31,13 @@ jobs:
         include:
           - os: windows-latest
             name: Windows
-          - os: macos-13          # Intel runner → builds x86_64
-            name: macOS-Intel
-            arch: x86_64
-          - os: macos-14          # Apple Silicon runner → builds arm64
+            arch: x64  # 不影響
+          - os: macos-latest          # Apple Silicon (arm64)
             name: macOS-AppleSilicon
             arch: arm64
+          - os: macos-26-large        # Intel (x86_64)，用 larger runner
+            name: macOS-Intel
+            arch: x86_64
 
     runs-on: ${{ matrix.os }}
     permissions:
@@ -47,7 +48,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
@@ -66,7 +67,7 @@ jobs:
         if: startsWith(matrix.os, 'macos-')
         run: brew install ffmpeg
 
-      # ─── Windows Build ───────────────────────────────────────
+      # Windows Build (不變)
       - name: Build Windows
         if: matrix.os == 'windows-latest'
         shell: powershell
@@ -88,7 +89,7 @@ jobs:
           mkdir release
           Move-Item -Path dist\YoutubeDLT.exe -Destination release\YoutubeDLT-Windows.exe
 
-      # ─── macOS Builds (Intel + Apple Silicon) ────────────────
+      # macOS Builds
       - name: Build macOS (${{ matrix.name }})
         if: startsWith(matrix.os, 'macos-')
         run: |
@@ -97,7 +98,6 @@ jobs:
             --clean \
             --windowed \
             --name YoutubeDLT \
-            --target-arch ${{ matrix.arch }} \
             --hidden-import yt_dlp \
             --hidden-import PyQt6.QtWidgets \
             --hidden-import PyQt6.QtCore \
@@ -111,24 +111,24 @@ jobs:
           cd release
           zip -r YoutubeDLT-${{ matrix.name }}.zip YoutubeDLT.app
 
-      # ─── Upload artifacts to Release ─────────────────────────
+      # Uploads
       - name: Upload Windows
         if: matrix.os == 'windows-latest'
-        uses: softprops/action-gh-release@v2.5.0
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           files: release/YoutubeDLT-Windows.exe
 
-      - name: Upload macOS Intel
-        if: matrix.name == 'macOS-Intel'
-        uses: softprops/action-gh-release@v2.5.0
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: release/YoutubeDLT-macOS-Intel.zip
-
       - name: Upload macOS Apple Silicon
         if: matrix.name == 'macOS-AppleSilicon'
-        uses: softprops/action-gh-release@v2.5.0
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           files: release/YoutubeDLT-macOS-AppleSilicon.zip
+
+      - name: Upload macOS Intel
+        if: matrix.name == 'macOS-Intel'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: release/YoutubeDLT-macOS-Intel.zip
