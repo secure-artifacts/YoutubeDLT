@@ -7,9 +7,6 @@ on:
     tags:
       - "v*"
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 permissions:
   contents: write
 
@@ -19,8 +16,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -31,20 +27,15 @@ jobs:
 
 
   build-windows:
-
     needs: create-release
     runs-on: windows-latest
 
     steps:
+      - uses: actions/checkout@v4
 
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Python
-        uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
 
       - name: Install dependencies
         run: |
@@ -55,10 +46,9 @@ jobs:
       - name: Install ffmpeg
         run: choco install ffmpeg -y
 
-      - name: Build Windows EXE
+      - name: Build EXE
         shell: powershell
         run: |
-
           pyinstaller `
             --noconfirm `
             --clean `
@@ -75,7 +65,7 @@ jobs:
 
           move dist\YoutubeDLT.exe YoutubeDLT-Windows.exe
 
-      - name: Upload Windows Release
+      - name: Upload Windows
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
@@ -83,68 +73,46 @@ jobs:
 
 
   build-macos:
-
     needs: create-release
     runs-on: macos-latest
 
     steps:
+      - uses: actions/checkout@v4
 
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Python
-        uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
           brew install ffmpeg create-dmg
 
-      # Build Apple Silicon
       - name: Build arm64
         run: |
-
           arch -arm64 pyinstaller \
             --noconfirm \
             --clean \
             --windowed \
             --name YoutubeDLT \
-            --hidden-import yt_dlp \
-            --hidden-import PyQt6.QtWidgets \
-            --hidden-import PyQt6.QtCore \
-            --hidden-import PyQt6.QtGui \
-            --hidden-import certifi \
             main.py
 
           mv dist/YoutubeDLT.app YoutubeDLT-arm64.app
 
-      # Build Intel
       - name: Build x86_64
         run: |
-
           arch -x86_64 pyinstaller \
             --noconfirm \
             --clean \
             --windowed \
             --name YoutubeDLT \
-            --hidden-import yt_dlp \
-            --hidden-import PyQt6.QtWidgets \
-            --hidden-import PyQt6.QtCore \
-            --hidden-import PyQt6.QtGui \
-            --hidden-import certifi \
             main.py
 
           mv dist/YoutubeDLT.app YoutubeDLT-x86_64.app
 
-      # Merge universal binary
       - name: Create Universal Binary
         run: |
-
           cp -R YoutubeDLT-arm64.app YoutubeDLT.app
 
           rm YoutubeDLT.app/Contents/MacOS/YoutubeDLT
@@ -154,26 +122,21 @@ jobs:
             YoutubeDLT-x86_64.app/Contents/MacOS/YoutubeDLT \
             -output YoutubeDLT.app/Contents/MacOS/YoutubeDLT
 
-      # Create DMG
       - name: Build DMG
         run: |
-
           mkdir dmg
-
           mv YoutubeDLT.app dmg/
 
           create-dmg \
             --volname "YoutubeDLT Installer" \
-            --window-pos 200 120 \
             --window-size 600 300 \
             --icon-size 100 \
             --icon YoutubeDLT.app 175 120 \
-            --hide-extension YoutubeDLT.app \
             --app-drop-link 425 120 \
             YoutubeDLT-macOS.dmg \
             dmg/
 
-      - name: Upload macOS DMG
+      - name: Upload macOS
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
