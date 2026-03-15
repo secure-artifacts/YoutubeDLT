@@ -11,9 +11,9 @@ env:
 
 jobs:
 
-################################
+############################################
 # Create Release
-################################
+############################################
 
   create-release:
     runs-on: ubuntu-latest
@@ -29,10 +29,11 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: YoutubeDLT ${{ github.ref_name }}
           generate_release_notes: true
+          overwrite_files: true
 
-################################
+############################################
 # Windows Build
-################################
+############################################
 
   build-windows:
     needs: create-release
@@ -42,7 +43,8 @@ jobs:
 
     steps:
 
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v5
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -80,10 +82,12 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           files: release/YoutubeDLT-Windows.exe
+          overwrite_files: true
+          fail_on_unmatched_files: false
 
-################################
-# macOS Build
-################################
+############################################
+# macOS Build (Intel + Apple Silicon)
+############################################
 
   build-macos:
     needs: create-release
@@ -97,7 +101,8 @@ jobs:
 
     steps:
 
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v5
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -136,9 +141,10 @@ jobs:
           # remove quarantine
           xattr -cr "$APP"
 
-          # ad-hoc codesign
+          # ad-hoc sign
           codesign --deep --force --sign - "$APP"
 
+          # verify
           codesign --verify --deep --strict "$APP"
 
       - name: Package
@@ -154,3 +160,5 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           files: release/YoutubeDLT-macOS-${{ matrix.arch }}.zip
+          overwrite_files: true
+          fail_on_unmatched_files: false
