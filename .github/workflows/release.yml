@@ -1,4 +1,4 @@
-name: Build Release
+name: Build YoutubeDLT (Nuitka)
 
 on:
   workflow_dispatch:
@@ -8,9 +8,9 @@ permissions:
 
 jobs:
 
-################################
+############################
 # Windows
-################################
+############################
 
   windows:
 
@@ -27,24 +27,22 @@ jobs:
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
-        pip install pyinstaller
+        pip install nuitka
+        pip install imageio
 
     - name: Build Windows
       run: |
-        pyinstaller --noconfirm --clean --onefile --windowed ^
-        --name YoutubeDLT ^
-        --collect-all PyQt6 ^
-        --hidden-import PyQt6.QtCore ^
-        --hidden-import PyQt6.QtGui ^
-        --hidden-import PyQt6.QtWidgets ^
-        --hidden-import yt_dlp ^
-        --hidden-import certifi ^
-        main.py
+        python -m nuitka main.py ^
+          --standalone ^
+          --enable-plugin=pyqt6 ^
+          --windows-disable-console ^
+          --output-dir=build ^
+          --output-filename=YoutubeDLT.exe
 
     - name: Package
       run: |
         mkdir release
-        move dist\YoutubeDLT.exe release\YoutubeDLT-Windows.exe
+        move build\main.dist\YoutubeDLT.exe release\YoutubeDLT-Windows.exe
 
     - uses: softprops/action-gh-release@v2
       with:
@@ -52,9 +50,9 @@ jobs:
         files: release/YoutubeDLT-Windows.exe
         overwrite_files: true
 
-################################
-# macOS ARM (M1/M2/M3)
-################################
+############################
+# macOS ARM
+############################
 
   mac-arm:
 
@@ -67,48 +65,41 @@ jobs:
     - uses: actions/setup-python@v5
       with:
         python-version: "3.12"
-        architecture: arm64
 
     - name: Install dependencies
       run: |
+        brew install create-dmg
         pip install -r requirements.txt
-        pip install pyinstaller
+        pip install nuitka
 
     - name: Build ARM
       run: |
-        pyinstaller \
-        --noconfirm \
-        --clean \
-        --windowed \
-        --target-arch arm64 \
-        --name YoutubeDLT \
-        --collect-all PyQt6 \
-        --hidden-import PyQt6.QtCore \
-        --hidden-import PyQt6.QtGui \
-        --hidden-import PyQt6.QtWidgets \
-        --hidden-import yt_dlp \
-        --hidden-import certifi \
-        main.py
+        python -m nuitka main.py \
+          --standalone \
+          --enable-plugin=pyqt6 \
+          --macos-create-app-bundle \
+          --macos-app-name=YoutubeDLT \
+          --output-dir=build
 
-    - name: Fix macOS security
+    - name: Create DMG
       run: |
-        xattr -cr dist/YoutubeDLT.app
-        codesign --deep --force --sign - dist/YoutubeDLT.app
-
-    - name: Zip
-      run: |
-        cd dist
-        zip -r YoutubeDLT-macOS-arm64.zip YoutubeDLT.app
+        create-dmg \
+          --volname "YoutubeDLT" \
+          --window-size 600 300 \
+          --icon-size 100 \
+          --app-drop-link 450 150 \
+          YoutubeDLT-macOS-arm64.dmg \
+          build/main.app
 
     - uses: softprops/action-gh-release@v2
       with:
         tag_name: mac-arm
-        files: dist/YoutubeDLT-macOS-arm64.zip
+        files: YoutubeDLT-macOS-arm64.dmg
         overwrite_files: true
 
-################################
+############################
 # macOS Intel
-################################
+############################
 
   mac-intel:
 
@@ -121,41 +112,34 @@ jobs:
     - uses: actions/setup-python@v5
       with:
         python-version: "3.12"
-        architecture: x64
 
     - name: Install dependencies
       run: |
+        brew install create-dmg
         pip install -r requirements.txt
-        pip install pyinstaller
+        pip install nuitka
 
     - name: Build Intel
       run: |
-        pyinstaller \
-        --noconfirm \
-        --clean \
-        --windowed \
-        --target-arch x86_64 \
-        --name YoutubeDLT \
-        --collect-all PyQt6 \
-        --hidden-import PyQt6.QtCore \
-        --hidden-import PyQt6.QtGui \
-        --hidden-import PyQt6.QtWidgets \
-        --hidden-import yt_dlp \
-        --hidden-import certifi \
-        main.py
+        python -m nuitka main.py \
+          --standalone \
+          --enable-plugin=pyqt6 \
+          --macos-create-app-bundle \
+          --macos-app-name=YoutubeDLT \
+          --output-dir=build
 
-    - name: Fix macOS security
+    - name: Create DMG
       run: |
-        xattr -cr dist/YoutubeDLT.app
-        codesign --deep --force --sign - dist/YoutubeDLT.app
-
-    - name: Zip
-      run: |
-        cd dist
-        zip -r YoutubeDLT-macOS-x86_64.zip YoutubeDLT.app
+        create-dmg \
+          --volname "YoutubeDLT" \
+          --window-size 600 300 \
+          --icon-size 100 \
+          --app-drop-link 450 150 \
+          YoutubeDLT-macOS-x86_64.dmg \
+          build/main.app
 
     - uses: softprops/action-gh-release@v2
       with:
         tag_name: mac-intel
-        files: dist/YoutubeDLT-macOS-x86_64.zip
+        files: YoutubeDLT-macOS-x86_64.dmg
         overwrite_files: true
