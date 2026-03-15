@@ -27,60 +27,165 @@ jobs:
           generate_release_notes: true
 
 
-  build:
+  build-macos-arm64:
+
     needs: create-release
+    runs-on: macos-latest
 
-    strategy:
-      matrix:
-        include:
+    steps:
 
-          - os: windows-latest
-            platform: windows
+      - uses: actions/checkout@v5
 
-          - os: macos-latest
-            platform: macos-arm64
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
 
-          - os: macos-13
-            platform: macos-x86_64
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+          brew install ffmpeg
 
-    runs-on: ${{ matrix.os }}
+      - name: Build arm64
+        run: |
+
+          pyinstaller \
+            --noconfirm \
+            --clean \
+            --windowed \
+            --name YoutubeDLT \
+            --hidden-import yt_dlp \
+            --hidden-import PyQt6.QtWidgets \
+            --hidden-import PyQt6.QtCore \
+            --hidden-import PyQt6.QtGui \
+            --hidden-import certifi \
+            main.py
+
+          mv dist/YoutubeDLT.app YoutubeDLT-arm64.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64
+          path: YoutubeDLT-arm64.app
+
+
+  build-macos-x86:
+
+    needs: create-release
+    runs-on: macos-13
+
+    steps:
+
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+          brew install ffmpeg
+
+      - name: Build x86_64
+        run: |
+
+          pyinstaller \
+            --noconfirm \
+            --clean \
+            --windowed \
+            --name YoutubeDLT \
+            --hidden-import yt_dlp \
+            --hidden-import PyQt6.QtWidgets \
+            --hidden-import PyQt6.QtCore \
+            --hidden-import PyQt6.QtGui \
+            --hidden-import certifi \
+            main.py
+
+          mv dist/YoutubeDLT.app YoutubeDLT-x86_64.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-x86
+          path: YoutubeDLT-x86_64.app
+
+
+  merge-universal:
+
+    needs:
+      - build-macos-arm64
+      - build-macos-x86
+
+    runs-on: macos-latest
 
     permissions:
       contents: write
 
     steps:
 
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-arm64
+          path: arm
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-x86
+          path: x86
+
+      - name: Create Universal Binary
+        run: |
+
+          cp -R arm/YoutubeDLT-arm64.app YoutubeDLT.app
+
+          ARM_BIN=arm/YoutubeDLT-arm64.app/Contents/MacOS/YoutubeDLT
+          X86_BIN=x86/YoutubeDLT-x86_64.app/Contents/MacOS/YoutubeDLT
+          UNI_BIN=YoutubeDLT.app/Contents/MacOS/YoutubeDLT
+
+          rm $UNI_BIN
+
+          lipo -create \
+            $ARM_BIN \
+            $X86_BIN \
+            -output $UNI_BIN
+
+      - name: Zip universal app
+        run: |
+          zip -r YoutubeDLT-macOS-universal.zip YoutubeDLT.app
+
+      - name: Upload macOS Universal
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: YoutubeDLT-macOS-universal.zip
 
 
-      - name: Setup Python
-        uses: actions/setup-python@v6
+  build-windows:
+
+    needs: create-release
+    runs-on: windows-latest
+
+    permissions:
+      contents: write
+
+    steps:
+
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          cache: pip
-
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
 
-
-      - name: Install ffmpeg (Windows)
-        if: matrix.platform == 'windows'
+      - name: Install ffmpeg
         run: choco install ffmpeg -y
 
-
-      - name: Install ffmpeg (macOS)
-        if: startsWith(matrix.platform, 'macos')
-        run: brew install ffmpeg
-
-
-      # Windows Build
       - name: Build Windows
-        if: matrix.platform == 'windows'
         shell: powershell
         run: |
 
@@ -98,45 +203,10 @@ jobs:
             --hidden-import certifi `
             main.py
 
-          mkdir release
-          move dist\YoutubeDLT.exe release\YoutubeDLT-Windows.exe
-
-
-      # macOS Build
-      - name: Build macOS
-        if: startsWith(matrix.platform, 'macos')
-        run: |
-
-          pyinstaller \
-            --noconfirm \
-            --clean \
-            --windowed \
-            --name YoutubeDLT \
-            --hidden-import yt_dlp \
-            --hidden-import PyQt6.QtWidgets \
-            --hidden-import PyQt6.QtCore \
-            --hidden-import PyQt6.QtGui \
-            --hidden-import certifi \
-            main.py
-
-          mkdir release
-          mv dist/YoutubeDLT.app release/
-
-          cd release
-          zip -r YoutubeDLT-${{ matrix.platform }}.zip YoutubeDLT.app
-
+          move dist\YoutubeDLT.exe YoutubeDLT-Windows.exe
 
       - name: Upload Windows
-        if: matrix.platform == 'windows'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: release/YoutubeDLT-Windows.exe
-
-
-      - name: Upload macOS
-        if: startsWith(matrix.platform, 'macos')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: release/YoutubeDLT-${{ matrix.platform }}.zip
+          files: YoutubeDLT-Windows.exe
