@@ -11,9 +11,9 @@ env:
 
 jobs:
 
-############################################
+################################
 # Create Release
-############################################
+################################
 
   create-release:
     runs-on: ubuntu-latest
@@ -24,16 +24,15 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2.5.0
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: YoutubeDLT ${{ github.ref_name }}
           generate_release_notes: true
-          overwrite_files: true
 
-############################################
+################################
 # Windows Build
-############################################
+################################
 
   build-windows:
     needs: create-release
@@ -43,14 +42,12 @@ jobs:
 
     steps:
 
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          cache: pip
 
       - name: Install dependencies
         run: |
@@ -78,16 +75,14 @@ jobs:
           move dist\YoutubeDLT.exe release\YoutubeDLT-Windows.exe
 
       - name: Upload Windows
-        uses: softprops/action-gh-release@v2.5.0
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           files: release/YoutubeDLT-Windows.exe
-          overwrite_files: true
-          fail_on_unmatched_files: false
 
-############################################
-# macOS Build (Intel + Apple Silicon)
-############################################
+################################
+# macOS Build
+################################
 
   build-macos:
     needs: create-release
@@ -101,14 +96,12 @@ jobs:
 
     steps:
 
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          cache: pip
 
       - name: Install dependencies
         run: |
@@ -138,14 +131,8 @@ jobs:
         run: |
           APP="dist/YoutubeDLT.app"
 
-          # remove quarantine
           xattr -cr "$APP"
-
-          # ad-hoc sign
           codesign --deep --force --sign - "$APP"
-
-          # verify
-          codesign --verify --deep --strict "$APP"
 
       - name: Package
         run: |
@@ -155,10 +142,22 @@ jobs:
           cd release
           zip -r YoutubeDLT-macOS-${{ matrix.arch }}.zip YoutubeDLT.app
 
+################################
+# Delete existing asset
+################################
+
+      - name: Delete old asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete-asset ${{ github.ref_name }} YoutubeDLT-macOS-${{ matrix.arch }}.zip --yes || true
+
+################################
+# Upload
+################################
+
       - name: Upload macOS
-        uses: softprops/action-gh-release@v2.5.0
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           files: release/YoutubeDLT-macOS-${{ matrix.arch }}.zip
-          overwrite_files: true
-          fail_on_unmatched_files: false
