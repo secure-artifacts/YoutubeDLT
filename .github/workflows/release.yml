@@ -1,149 +1,161 @@
-name: Build and Release
+name: Build Release
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: write
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
 
-  build:
+################################
+# Windows
+################################
 
-    strategy:
-      matrix:
-        os: [windows-latest, macos-latest]
+  windows:
 
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
 
     steps:
 
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v4
 
-################################
-# Python
-################################
-
-    - name: Setup Python
-      uses: actions/setup-python@v6
+    - uses: actions/setup-python@v5
       with:
         python-version: "3.12"
 
-################################
-# Dependencies
-################################
-
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
 
-################################
-# ffmpeg
-################################
-
-    - name: Install ffmpeg (Windows)
-      if: matrix.os == 'windows-latest'
-      run: choco install ffmpeg -y
-
-    - name: Install ffmpeg (macOS)
-      if: matrix.os == 'macos-latest'
-      run: brew install ffmpeg
-
-################################
-# Build Windows
-################################
-
     - name: Build Windows
-      if: matrix.os == 'windows-latest'
-      shell: powershell
       run: |
-        pyinstaller --noconfirm --clean --onefile --windowed `
-        --name YoutubeDLT `
-        --icon app_icon.ico `
-        --collect-all PyQt6 `
-        --hidden-import yt_dlp `
-        --hidden-import certifi `
+        pyinstaller --noconfirm --clean --onefile --windowed ^
+        --name YoutubeDLT ^
+        --collect-all PyQt6 ^
+        --hidden-import PyQt6.QtCore ^
+        --hidden-import PyQt6.QtGui ^
+        --hidden-import PyQt6.QtWidgets ^
+        --hidden-import yt_dlp ^
+        --hidden-import certifi ^
         main.py
 
+    - name: Package
+      run: |
+        mkdir release
+        move dist\YoutubeDLT.exe release\YoutubeDLT-Windows.exe
+
+    - uses: softprops/action-gh-release@v2
+      with:
+        tag_name: windows
+        files: release/YoutubeDLT-Windows.exe
+        overwrite_files: true
+
 ################################
-# Build macOS Universal
+# macOS ARM (M1/M2/M3)
 ################################
 
-    - name: Build macOS
-      if: matrix.os == 'macos-latest'
+  mac-arm:
+
+    runs-on: macos-latest
+
+    steps:
+
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        architecture: arm64
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Build ARM
       run: |
         pyinstaller \
         --noconfirm \
         --clean \
         --windowed \
-        --target-arch universal2 \
+        --target-arch arm64 \
         --name YoutubeDLT \
         --collect-all PyQt6 \
+        --hidden-import PyQt6.QtCore \
+        --hidden-import PyQt6.QtGui \
+        --hidden-import PyQt6.QtWidgets \
         --hidden-import yt_dlp \
         --hidden-import certifi \
         main.py
 
-################################
-# Fix macOS Security
-################################
-
     - name: Fix macOS security
-      if: matrix.os == 'macos-latest'
       run: |
         xattr -cr dist/YoutubeDLT.app
         codesign --deep --force --sign - dist/YoutubeDLT.app
 
-################################
-# Create DMG
-################################
-
-    - name: Install create-dmg
-      if: matrix.os == 'macos-latest'
-      run: brew install create-dmg
-
-    - name: Create DMG
-      if: matrix.os == 'macos-latest'
+    - name: Zip
       run: |
-        mkdir dmg
-        mv dist/YoutubeDLT.app dmg/
+        cd dist
+        zip -r YoutubeDLT-macOS-arm64.zip YoutubeDLT.app
 
-        create-dmg \
-        --volname "YoutubeDLT" \
-        --window-pos 200 120 \
-        --window-size 800 400 \
-        --icon-size 100 \
-        --icon "YoutubeDLT.app" 200 190 \
-        --hide-extension "YoutubeDLT.app" \
-        --app-drop-link 600 185 \
-        YoutubeDLT-macOS.dmg \
-        dmg
-
-################################
-# Package Windows
-################################
-
-    - name: Package Windows
-      if: matrix.os == 'windows-latest'
-      run: |
-        mkdir release
-        move dist\YoutubeDLT.exe release\YoutubeDLT-Windows.exe
-
-################################
-# Create Release
-################################
-
-    - name: Release
-      uses: softprops/action-gh-release@v2
+    - uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ github.ref_name }}
-        files: |
-          release/YoutubeDLT-Windows.exe
-          YoutubeDLT-macOS.dmg
+        tag_name: mac-arm
+        files: dist/YoutubeDLT-macOS-arm64.zip
+        overwrite_files: true
+
+################################
+# macOS Intel
+################################
+
+  mac-intel:
+
+    runs-on: macos-13
+
+    steps:
+
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        architecture: x64
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Build Intel
+      run: |
+        pyinstaller \
+        --noconfirm \
+        --clean \
+        --windowed \
+        --target-arch x86_64 \
+        --name YoutubeDLT \
+        --collect-all PyQt6 \
+        --hidden-import PyQt6.QtCore \
+        --hidden-import PyQt6.QtGui \
+        --hidden-import PyQt6.QtWidgets \
+        --hidden-import yt_dlp \
+        --hidden-import certifi \
+        main.py
+
+    - name: Fix macOS security
+      run: |
+        xattr -cr dist/YoutubeDLT.app
+        codesign --deep --force --sign - dist/YoutubeDLT.app
+
+    - name: Zip
+      run: |
+        cd dist
+        zip -r YoutubeDLT-macOS-x86_64.zip YoutubeDLT.app
+
+    - uses: softprops/action-gh-release@v2
+      with:
+        tag_name: mac-intel
+        files: dist/YoutubeDLT-macOS-x86_64.zip
+        overwrite_files: true
