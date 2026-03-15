@@ -64,10 +64,8 @@ jobs:
           pyinstaller --noconfirm --clean --onefile --windowed `
           --name YoutubeDLT `
           --icon app_icon.ico `
+          --collect-all PyQt6 `
           --hidden-import yt_dlp `
-          --hidden-import PyQt6.QtWidgets `
-          --hidden-import PyQt6.QtCore `
-          --hidden-import PyQt6.QtGui `
           --hidden-import certifi `
           main.py
 
@@ -81,7 +79,7 @@ jobs:
           files: release/YoutubeDLT-Windows.exe
 
 ################################
-# macOS Build
+# macOS Universal Build
 ################################
 
   build-macos:
@@ -90,48 +88,28 @@ jobs:
     permissions:
       contents: write
 
-    strategy:
-      matrix:
-        arch: [arm64, x86_64]
-
     steps:
 
       - uses: actions/checkout@v5
 
 ################################
-# Install ARM dependencies
+# Install Python
 ################################
 
-      - name: Setup Python ARM
-        if: matrix.arch == 'arm64'
+      - name: Setup Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
-      - name: Install dependencies ARM
-        if: matrix.arch == 'arm64'
+################################
+# Install dependencies
+################################
+
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
-
-################################
-# Install Intel dependencies
-################################
-
-      - name: Setup Python Intel
-        if: matrix.arch == 'x86_64'
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          architecture: x64
-
-      - name: Install dependencies Intel
-        if: matrix.arch == 'x86_64'
-        run: |
-          arch -x86_64 python -m pip install --upgrade pip
-          arch -x86_64 pip install -r requirements.txt
-          arch -x86_64 pip install pyinstaller
 
 ################################
 # Install ffmpeg
@@ -141,45 +119,23 @@ jobs:
         run: brew install ffmpeg
 
 ################################
-# Build ARM
+# Build App
 ################################
 
-      - name: Build macOS ARM
-        if: matrix.arch == 'arm64'
+      - name: Build macOS App
         run: |
           pyinstaller \
           --noconfirm \
           --clean \
           --windowed \
           --name YoutubeDLT \
+          --collect-all PyQt6 \
           --hidden-import yt_dlp \
-          --hidden-import PyQt6.QtWidgets \
-          --hidden-import PyQt6.QtCore \
-          --hidden-import PyQt6.QtGui \
           --hidden-import certifi \
           main.py
 
 ################################
-# Build Intel
-################################
-
-      - name: Build macOS Intel
-        if: matrix.arch == 'x86_64'
-        run: |
-          arch -x86_64 pyinstaller \
-          --noconfirm \
-          --clean \
-          --windowed \
-          --name YoutubeDLT \
-          --hidden-import yt_dlp \
-          --hidden-import PyQt6.QtWidgets \
-          --hidden-import PyQt6.QtCore \
-          --hidden-import PyQt6.QtGui \
-          --hidden-import certifi \
-          main.py
-
-################################
-# Fix macOS security
+# Fix macOS Security
 ################################
 
       - name: Fix macOS Security
@@ -191,23 +147,38 @@ jobs:
           codesign --deep --force --sign - "$APP"
 
 ################################
-# Package
+# Install DMG Creator
 ################################
 
-      - name: Package
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+################################
+# Create DMG
+################################
+
+      - name: Create DMG
         run: |
-          mkdir release
-          mv dist/YoutubeDLT.app release/
+          mkdir dmg
+          mv dist/YoutubeDLT.app dmg/
 
-          cd release
-          zip -r YoutubeDLT-macOS-${{ matrix.arch }}.zip YoutubeDLT.app
+          create-dmg \
+          --volname "YoutubeDLT" \
+          --window-pos 200 120 \
+          --window-size 800 400 \
+          --icon-size 100 \
+          --icon "YoutubeDLT.app" 200 190 \
+          --hide-extension "YoutubeDLT.app" \
+          --app-drop-link 600 185 \
+          "YoutubeDLT-macOS.dmg" \
+          "dmg"
 
 ################################
-# Upload
+# Upload macOS
 ################################
 
       - name: Upload macOS
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: release/YoutubeDLT-macOS-${{ matrix.arch }}.zip
+          files: YoutubeDLT-macOS.dmg
