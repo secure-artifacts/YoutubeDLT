@@ -1,52 +1,38 @@
-name: Build and Release
+name: Build and Release (Windows - Single EXE)
 
 on:
-  workflow_dispatch:
   push:
     tags:
-      - "v*"
+      - 'v*'
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+# 防止同一个 tag 同时运行多个构建
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  create-release:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: YoutubeDLT ${{ github.ref_name }}
-          generate_release_notes: true
-
   build:
-    needs: create-release
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            name: Windows
-          - os: macos-latest          # arm64 (M 系列原生)
-            name: macOS
-
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     permissions:
+      id-token: write
       contents: write
+      attestations: write
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-          cache: pip
+          python-version: '3.12'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\pip\Cache
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
 
       - name: Install dependencies
         run: |
@@ -54,22 +40,16 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Install ffmpeg Windows
-        if: matrix.os == 'windows-latest'
-        run: choco install ffmpeg -y
+      - name: Install ffmpeg
+        run: choco install ffmpeg -y --no-progress
 
-      - name: Install ffmpeg macOS
-        if: matrix.os == 'macos-latest'
-        run: brew install ffmpeg
-
-      - name: Build Windows
-        if: matrix.os == 'windows-latest'
+      - name: Build Single EXE (OneFile)
         shell: powershell
         run: |
           pyinstaller `
             --noconfirm `
             --clean `
-            --onefile `
+            --onefile `                          # 单文件模式
             --windowed `
             --name YoutubeDLT `
             --icon app_icon.ico `
@@ -77,40 +57,47 @@ jobs:
             --hidden-import PyQt6.QtWidgets `
             --hidden-import PyQt6.QtCore `
             --hidden-import PyQt6.QtGui `
+            --hidden-import PyQt6.QtNetwork `
+            --hidden-import PyQt6.sip `
             --hidden-import certifi `
+            --collect-all yt_dlp `               # 更彻底收集 yt-dlp 模块
+            --collect-all PyQt6 `                # 收集 PyQt6 相关资源
             main.py
-          mkdir release
-          Move-Item -Path dist\YoutubeDLT.exe -Destination release\YoutubeDLT-Windows.exe
 
-      - name: Build macOS (Apple Silicon)
-        if: matrix.os == 'macos-latest'
-        run: |
-          pyinstaller \
-            --noconfirm \
-            --clean \
-            --windowed \
-            --name YoutubeDLT \
-            --hidden-import yt_dlp \
-            --hidden-import PyQt6.QtWidgets \
-            --hidden-import PyQt6.QtCore \
-            --hidden-import PyQt6.QtGui \
-            --hidden-import certifi \
-            main.py
-          mkdir release
-          mv dist/YoutubeDLT.app release/
-          cd release
-          zip -r YoutubeDLT-macOS.zip YoutubeDLT.app
+          # 创建最终输出目录并移动 exe
+          mkdir -p dist_final
+          Move-Item -Path dist/YoutubeDLT.exe -Destination dist_final/YoutubeDLT-Windows.exe -Force
 
-      - name: Upload Windows
-        if: matrix.os == 'windows-latest'
+      - name: Generate Build Provenance Attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: 'dist_final/*'
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: YoutubeDLT-Windows
+          path: dist_final/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          files: release/YoutubeDLT-Windows.exe
-
-      - name: Upload macOS (Apple Silicon)
-        if: matrix.os == 'macos-latest'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: release/YoutubeDLT-macOS.zip
+          files: artifacts/**
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          make_latest: true
