@@ -41,12 +41,12 @@ GITHUB_RELEASES_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest"
 
 # ================== 程序自身更新配置（重要！请修改这里） ==================
 # 请将下面两行修改为【你自己的 GitHub 仓库地址】
-APP_GITHUB_REPO = "https://github.com/YOUR_USERNAME/YOUR_REPO_NAME"      # ←←← 必须修改
+APP_GITHUB_REPO = "https://github.com/secure-artifacts/YoutubeDLT"      # ←←← 必须修改
 APP_RELEASES_URL = f"{APP_GITHUB_REPO}/releases/latest"
-APP_GITHUB_API_URL = f"https://api.github.com/repos/YOUR_USERNAME/YOUR_REPO_NAME/releases/latest"  # ←←← 必须修改
+APP_GITHUB_API_URL = f"https://api.github.com/repos/secure-artifacts/YoutubeDLT/releases/latest"  # ←←← 必须修改
 
 # 程序当前版本号（每次发布新版本时请在这里更新）
-APP_CURRENT_VERSION = "1.0.0"   # ←←← 推荐使用 1.2.3 格式
+APP_CURRENT_VERSION = "2.0.0"   # ←←← 推荐使用 1.2.3 格式
 
 # 单实例锁
 LOCK_FILE = os.path.join(CONFIG_DIR, "app.lock")
