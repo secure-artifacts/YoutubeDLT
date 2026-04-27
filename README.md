@@ -7,6 +7,7 @@ https://github.com/xvacts/YoutubeDLT/blob/main/AGENTS.md
 Example prompt:
 
 Use websearch to read this page and help me use the project.
+
 macOS👇
 <img width="1832" height="1177" alt="image" src="https://github.com/user-attachments/assets/1995fced-5530-42e7-a360-6fa3403e574e" />
 Windows👇
