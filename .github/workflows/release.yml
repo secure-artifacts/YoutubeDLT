@@ -1,4 +1,4 @@
-name: Build and Release (Windows + macOS)
+name: Build and Release (Windows - Single EXE)
 
 on:
   push:
@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '版本号 (例如: v2.0.0)'
+        description: '版本号 (例如: v2.0.1)'
         required: true
-        default: 'v2.0.0'
+        default: 'v2.0.1'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -17,12 +17,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build for ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [windows-latest, macos-latest]
-
+    runs-on: windows-latest
     permissions:
       id-token: write
       contents: write
@@ -42,9 +37,7 @@ jobs:
       - name: Cache pip
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.cache/pip
-            ~\AppData\Local\pip\Cache
+          path: ~\AppData\Local\pip\Cache
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
 
       - name: Install dependencies
@@ -53,18 +46,10 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      # ==================== Install ffmpeg（分开写，避免 shell 问题） ====================
-      - name: Install ffmpeg (Windows)
-        if: runner.os == 'Windows'
+      - name: Install ffmpeg
         run: choco install ffmpeg -y --no-progress
 
-      - name: Install ffmpeg (macOS)
-        if: runner.os == 'macOS'
-        run: brew install ffmpeg
-
-      # ==================== Windows 构建（保留你原来成功的写法） ====================
-      - name: Build Windows EXE
-        if: runner.os == 'Windows'
+      - name: Build Single EXE (强化版)
         shell: powershell
         run: |
           pyinstaller `
@@ -80,60 +65,18 @@ jobs:
             --hidden-import PyQt6.QtGui `
             --hidden-import PyQt6.QtNetwork `
             --hidden-import PyQt6.sip `
+            --hidden-import PyQt6.QtDBus `
+            --hidden-import PyQt6.QtXml `
+            --hidden-import PyQt6.QtSvg `
+            --hidden-import encodings.idna `
             --hidden-import certifi `
             --collect-all yt_dlp `
             --collect-all PyQt6 `
+            --add-data "app_icon.ico;." `
             main.py
 
           mkdir -p dist_final
           Move-Item -Path dist/YoutubeDLT.exe -Destination dist_final/YoutubeDLT-Windows.exe -Force
-
-      # ==================== macOS 构建（不使用图标） ====================
-      - name: Build macOS App + DMG
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -e
-
-          echo "=== Building YoutubeDLT for macOS (arm64) ==="
-
-          pyinstaller \
-            --noconfirm \
-            --clean \
-            --onefile \
-            --windowed \
-            --name YoutubeDLT \
-            --hidden-import yt_dlp \
-            --hidden-import PyQt6.QtWidgets \
-            --hidden-import PyQt6.QtCore \
-            --hidden-import PyQt6.QtGui \
-            --hidden-import PyQt6.QtNetwork \
-            --hidden-import PyQt6.sip \
-            --hidden-import certifi \
-            --collect-all yt_dlp \
-            --collect-all PyQt6 \
-            --target-arch arm64 \
-            main.py
-
-          echo "=== Creating DMG package ==="
-
-          brew install create-dmg
-
-          mkdir -p dist_final dist_temp
-          cp -R dist/YoutubeDLT.app dist_temp/
-
-          create-dmg \
-            --volname "YoutubeDLT" \
-            --window-pos 200 120 \
-            --window-size 600 400 \
-            --icon-size 100 \
-            --hide-extension "YoutubeDLT.app" \
-            --app-drop-link 425 120 \
-            --no-internet-enable \
-            "dist_final/YoutubeDLT-macOS.dmg" \
-            "dist_temp/"
-
-          echo "=== macOS build completed ==="
 
       - name: Generate Build Provenance
         uses: actions/attest@v4
@@ -143,7 +86,7 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: YoutubeDLT-${{ runner.os }}
+          name: YoutubeDLT-Windows
           path: dist_final/*
           if-no-files-found: error
 
@@ -154,22 +97,19 @@ jobs:
       contents: write
 
     steps:
-      - name: Download All Artifacts
+      - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
 
-      - name: Create GitHub Release + Upload Assets
+      - name: Create GitHub Release + Upload EXE
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.version || github.ref_name }}
-          files: |
-            artifacts/YoutubeDLT-Windows.exe
-            artifacts/YoutubeDLT-macOS.dmg
+          files: artifacts/YoutubeDLT-Windows.exe
           name: ${{ github.event.inputs.version || github.ref_name }}
           generate_release_notes: true
           draft: false
           prerelease: false
           make_latest: true
-          overwrite: true
