@@ -53,7 +53,6 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      # ==================== Install ffmpeg ====================
       - name: Install ffmpeg (Windows)
         if: runner.os == 'Windows'
         run: choco install ffmpeg -y --no-progress
@@ -62,7 +61,7 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ffmpeg
 
-      # ==================== Windows 构建（完全按照你成功的原始配置） ====================
+      # ==================== Windows 构建（加强版） ====================
       - name: Build Windows EXE
         if: runner.os == 'Windows'
         shell: powershell
@@ -79,22 +78,24 @@ jobs:
             --hidden-import PyQt6.QtCore `
             --hidden-import PyQt6.QtGui `
             --hidden-import PyQt6.QtNetwork `
+            --hidden-import PyQt6.QtDBus `
+            --hidden-import PyQt6.QtSvg `
             --hidden-import PyQt6.sip `
             --hidden-import certifi `
             --collect-all yt_dlp `
             --collect-all PyQt6 `
+            --collect-submodules PyQt6 `
             main.py
 
           mkdir -p dist_final
           Move-Item -Path dist/YoutubeDLT.exe -Destination dist_final/YoutubeDLT-Windows.exe -Force
 
-      # ==================== macOS 构建（不使用图标） ====================
+      # ==================== macOS 构建（无图标） ====================
       - name: Build macOS App + DMG
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -e
-
           echo "=== Building for macOS (arm64) ==="
 
           pyinstaller \
@@ -116,7 +117,6 @@ jobs:
             main.py
 
           echo "=== Creating DMG ==="
-
           brew install create-dmg
 
           mkdir -p dist_final dist_temp
@@ -132,8 +132,6 @@ jobs:
             --no-internet-enable \
             "dist_final/YoutubeDLT-macOS.dmg" \
             "dist_temp/"
-
-          echo "=== macOS DMG created ==="
 
       - name: Generate Build Provenance
         uses: actions/attest@v4
@@ -152,7 +150,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
