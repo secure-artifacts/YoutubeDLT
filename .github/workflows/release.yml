@@ -53,7 +53,7 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      # ==================== Install ffmpeg ====================
+      # ==================== Install ffmpeg for build time ====================
       - name: Install ffmpeg (Windows)
         if: runner.os == 'Windows'
         run: choco install ffmpeg -y --no-progress
@@ -62,7 +62,7 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ffmpeg
 
-      # ==================== Windows 构建（正常版 + Debug版） ====================
+      # ==================== Windows 构建（新增 --add-binary） ====================
       - name: Build Windows Normal (No Console)
         if: runner.os == 'Windows'
         shell: powershell
@@ -83,6 +83,8 @@ jobs:
             --hidden-import certifi `
             --collect-all yt_dlp `
             --collect-all PyQt6 `
+            --add-binary "C:/ProgramData/chocolatey/bin/ffmpeg.exe;ffmpeg" `
+            --add-binary "C:/ProgramData/chocolatey/bin/ffprobe.exe;ffmpeg" `
             --debug=all `
             main.py
 
@@ -109,12 +111,14 @@ jobs:
             --hidden-import certifi `
             --collect-all yt_dlp `
             --collect-all PyQt6 `
+            --add-binary "C:/ProgramData/chocolatey/bin/ffmpeg.exe;ffmpeg" `
+            --add-binary "C:/ProgramData/chocolatey/bin/ffprobe.exe;ffmpeg" `
             --debug=all `
             main.py
 
           Move-Item -Path dist/YoutubeDLT-Debug.exe -Destination dist_final/YoutubeDLT-Windows-Debug.exe -Force
 
-      # ==================== macOS 构建（正常版 + Debug版） ====================
+      # ==================== macOS 构建（新增 --add-binary） ====================
       - name: Build macOS Normal
         if: runner.os == 'macOS'
         shell: bash
@@ -138,6 +142,7 @@ jobs:
             --collect-all yt_dlp \
             --collect-all PyQt6 \
             --target-arch arm64 \
+            --add-binary "$(which ffmpeg):." \
             --debug=all \
             main.py
 
@@ -179,6 +184,7 @@ jobs:
             --collect-all yt_dlp \
             --collect-all PyQt6 \
             --target-arch arm64 \
+            --add-binary "$(which ffmpeg):." \
             --debug=all \
             main.py
 
