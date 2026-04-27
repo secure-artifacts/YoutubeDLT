@@ -63,9 +63,12 @@ jobs:
       - name: Build Single EXE/App + DMG
         shell: bash
         run: |
+          set -e  # 遇到错误立即退出
+
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            # Windows 使用 powershell 风格的多行（因为 pyinstaller 参数太多）
-            powershell -Command "
+            echo "=== Building for Windows ==="
+
+            powershell -NoProfile -Command "
               pyinstaller `
                 --noconfirm `
                 --clean `
@@ -88,7 +91,8 @@ jobs:
             mv dist/YoutubeDLT.exe dist_final/YoutubeDLT-Windows.exe
 
           else
-            # macOS (arm64)
+            echo "=== Building for macOS (arm64) ==="
+
             pyinstaller \
               --noconfirm \
               --clean \
@@ -107,7 +111,7 @@ jobs:
               --target-arch arm64 \
               main.py
 
-            # 打包成 DMG
+            # 打包 DMG
             brew install create-dmg
 
             mkdir -p dist_final dist_temp
@@ -163,4 +167,4 @@ jobs:
           draft: false
           prerelease: false
           make_latest: true
-          overwrite: true        # 允许手动重新触发时覆盖旧文件
+          overwrite: true
