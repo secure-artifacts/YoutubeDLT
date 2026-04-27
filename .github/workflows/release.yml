@@ -63,11 +63,11 @@ jobs:
         run: brew install ffmpeg
 
       # ==================== Windows 构建（正常版 + Debug版） ====================
-      - name: Build Single EXE (Windows - Normal)
+      - name: Build Windows Normal (No Console)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          pyinstaller `
+          python -m PyInstaller `
             --noconfirm `
             --clean `
             --onefile `
@@ -83,21 +83,21 @@ jobs:
             --hidden-import certifi `
             --collect-all yt_dlp `
             --collect-all PyQt6 `
-            --debug=all `          # <-- 新增：debug 信息
+            --debug=all `
             main.py
 
           mkdir -p dist_final
           Move-Item -Path dist/YoutubeDLT.exe -Destination dist_final/YoutubeDLT-Windows.exe -Force
 
-      - name: Build Single EXE (Windows - Debug with Console)
+      - name: Build Windows Debug (With Console)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          pyinstaller `
+          python -m PyInstaller `
             --noconfirm `
             --clean `
             --onefile `
-            --console `                 # <-- Debug 版使用控制台，便于看到错误
+            --console `
             --name YoutubeDLT-Debug `
             --icon app_icon.ico `
             --hidden-import yt_dlp `
@@ -115,12 +115,13 @@ jobs:
           Move-Item -Path dist/YoutubeDLT-Debug.exe -Destination dist_final/YoutubeDLT-Windows-Debug.exe -Force
 
       # ==================== macOS 构建（正常版 + Debug版） ====================
-      - name: Build macOS App + DMG (Normal)
+      - name: Build macOS Normal
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -e
-          echo "=== Building for macOS (arm64) - Normal ==="
+          echo "=== Building macOS Normal (arm64) ==="
+
           pyinstaller \
             --noconfirm \
             --clean \
@@ -137,10 +138,10 @@ jobs:
             --collect-all yt_dlp \
             --collect-all PyQt6 \
             --target-arch arm64 \
-            --debug=all \          # <-- 新增
+            --debug=all \
             main.py
 
-          echo "=== Creating DMG package ==="
+          echo "=== Creating Normal DMG ==="
           brew install create-dmg
           mkdir -p dist_final dist_temp
           cp -R dist/YoutubeDLT.app dist_temp/
@@ -155,17 +156,18 @@ jobs:
             "dist_final/YoutubeDLT-macOS.dmg" \
             "dist_temp/"
 
-      - name: Build macOS App + DMG (Debug with Console)
+      - name: Build macOS Debug (With Console)
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -e
-          echo "=== Building for macOS (arm64) - Debug ==="
+          echo "=== Building macOS Debug (arm64) ==="
+
           pyinstaller \
             --noconfirm \
             --clean \
             --onefile \
-            --console \                 # <-- Debug 版使用控制台
+            --console \
             --name YoutubeDLT-Debug \
             --hidden-import yt_dlp \
             --hidden-import PyQt6.QtWidgets \
@@ -180,6 +182,7 @@ jobs:
             --debug=all \
             main.py
 
+          echo "=== Creating Debug DMG ==="
           mkdir -p dist_temp_debug
           cp -R dist/YoutubeDLT-Debug.app dist_temp_debug/
           create-dmg \
