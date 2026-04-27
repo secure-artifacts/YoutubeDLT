@@ -22,8 +22,7 @@ jobs:
     strategy:
       matrix:
         os: [windows-latest, macos-latest]
-      max-parallel: 1        # 取消并行，一个一个顺序执行
-
+      max-parallel: 1
     permissions:
       id-token: write
       contents: write
@@ -63,8 +62,8 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ffmpeg
 
-      # ==================== Windows 构建（完全使用你提供的原始成功配置） ====================
-      - name: Build Single EXE (Windows)
+      # ==================== Windows 构建（正常版 + Debug版） ====================
+      - name: Build Single EXE (Windows - Normal)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
@@ -84,21 +83,44 @@ jobs:
             --hidden-import certifi `
             --collect-all yt_dlp `
             --collect-all PyQt6 `
+            --debug=all `          # <-- 新增：debug 信息
             main.py
 
-          # 创建最终目录并重命名
           mkdir -p dist_final
           Move-Item -Path dist/YoutubeDLT.exe -Destination dist_final/YoutubeDLT-Windows.exe -Force
 
-      # ==================== macOS 构建（不使用图标） ====================
-      - name: Build macOS App + DMG
+      - name: Build Single EXE (Windows - Debug with Console)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          pyinstaller `
+            --noconfirm `
+            --clean `
+            --onefile `
+            --console `                 # <-- Debug 版使用控制台，便于看到错误
+            --name YoutubeDLT-Debug `
+            --icon app_icon.ico `
+            --hidden-import yt_dlp `
+            --hidden-import PyQt6.QtWidgets `
+            --hidden-import PyQt6.QtCore `
+            --hidden-import PyQt6.QtGui `
+            --hidden-import PyQt6.QtNetwork `
+            --hidden-import PyQt6.sip `
+            --hidden-import certifi `
+            --collect-all yt_dlp `
+            --collect-all PyQt6 `
+            --debug=all `
+            main.py
+
+          Move-Item -Path dist/YoutubeDLT-Debug.exe -Destination dist_final/YoutubeDLT-Windows-Debug.exe -Force
+
+      # ==================== macOS 构建（正常版 + Debug版） ====================
+      - name: Build macOS App + DMG (Normal)
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -e
-
-          echo "=== Building for macOS (arm64) ==="
-
+          echo "=== Building for macOS (arm64) - Normal ==="
           pyinstaller \
             --noconfirm \
             --clean \
@@ -115,15 +137,13 @@ jobs:
             --collect-all yt_dlp \
             --collect-all PyQt6 \
             --target-arch arm64 \
+            --debug=all \          # <-- 新增
             main.py
 
           echo "=== Creating DMG package ==="
-
           brew install create-dmg
-
           mkdir -p dist_final dist_temp
           cp -R dist/YoutubeDLT.app dist_temp/
-
           create-dmg \
             --volname "YoutubeDLT" \
             --window-pos 200 120 \
@@ -135,7 +155,43 @@ jobs:
             "dist_final/YoutubeDLT-macOS.dmg" \
             "dist_temp/"
 
-          echo "=== macOS build completed ==="
+      - name: Build macOS App + DMG (Debug with Console)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -e
+          echo "=== Building for macOS (arm64) - Debug ==="
+          pyinstaller \
+            --noconfirm \
+            --clean \
+            --onefile \
+            --console \                 # <-- Debug 版使用控制台
+            --name YoutubeDLT-Debug \
+            --hidden-import yt_dlp \
+            --hidden-import PyQt6.QtWidgets \
+            --hidden-import PyQt6.QtCore \
+            --hidden-import PyQt6.QtGui \
+            --hidden-import PyQt6.QtNetwork \
+            --hidden-import PyQt6.sip \
+            --hidden-import certifi \
+            --collect-all yt_dlp \
+            --collect-all PyQt6 \
+            --target-arch arm64 \
+            --debug=all \
+            main.py
+
+          mkdir -p dist_temp_debug
+          cp -R dist/YoutubeDLT-Debug.app dist_temp_debug/
+          create-dmg \
+            --volname "YoutubeDLT-Debug" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --hide-extension "YoutubeDLT-Debug.app" \
+            --app-drop-link 425 120 \
+            --no-internet-enable \
+            "dist_final/YoutubeDLT-macOS-Debug.dmg" \
+            "dist_temp_debug/"
 
       - name: Generate Build Provenance
         uses: actions/attest@v4
@@ -169,6 +225,8 @@ jobs:
           files: |
             artifacts/YoutubeDLT-Windows.exe
             artifacts/YoutubeDLT-macOS.dmg
+            artifacts/YoutubeDLT-Windows-Debug.exe
+            artifacts/YoutubeDLT-macOS-Debug.dmg
           name: ${{ github.event.inputs.version || github.ref_name }}
           generate_release_notes: true
           draft: false
