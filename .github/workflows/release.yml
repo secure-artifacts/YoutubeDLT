@@ -1,10 +1,10 @@
-name: Build and Release (Windows - Single EXE)
+name: Build and Release (Windows + macOS)
 
 on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:                  # 手动触发测试用
+  workflow_dispatch: # 手动触发测试用
     inputs:
       version:
         description: '版本号 (例如: v2.0.0)'
@@ -17,7 +17,11 @@ concurrency:
 
 jobs:
   build:
-    runs-on: windows-latest
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
     permissions:
       id-token: write
       contents: write
@@ -37,7 +41,9 @@ jobs:
       - name: Cache pip
         uses: actions/cache@v4
         with:
-          path: ~\AppData\Local\pip\Cache
+          path: |
+            ~/.cache/pip
+            ~\AppData\Local\pip\Cache
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
 
       - name: Install dependencies
@@ -46,33 +52,80 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Install ffmpeg
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
         run: choco install ffmpeg -y --no-progress
 
-      - name: Build Single EXE
-        shell: powershell
-        run: |
-          pyinstaller `
-            --noconfirm `
-            --clean `
-            --onefile `
-            --windowed `
-            --name YoutubeDLT `
-            --icon app_icon.ico `
-            --hidden-import yt_dlp `
-            --hidden-import PyQt6.QtWidgets `
-            --hidden-import PyQt6.QtCore `
-            --hidden-import PyQt6.QtGui `
-            --hidden-import PyQt6.QtNetwork `
-            --hidden-import PyQt6.sip `
-            --hidden-import certifi `
-            --collect-all yt_dlp `
-            --collect-all PyQt6 `
-            main.py
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
 
-          # 创建最终目录并重命名成你想要的文件名
-          mkdir -p dist_final
-          Move-Item -Path dist/YoutubeDLT.exe -Destination dist_final/YoutubeDLT-Windows.exe -Force
+      - name: Build Single EXE/App
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            pyinstaller `
+              --noconfirm `
+              --clean `
+              --onefile `
+              --windowed `
+              --name YoutubeDLT `
+              --hidden-import yt_dlp `
+              --hidden-import PyQt6.QtWidgets `
+              --hidden-import PyQt6.QtCore `
+              --hidden-import PyQt6.QtGui `
+              --hidden-import PyQt6.QtNetwork `
+              --hidden-import PyQt6.sip `
+              --hidden-import certifi `
+              --collect-all yt_dlp `
+              --collect-all PyQt6 `
+              main.py
+
+            mkdir -p dist_final
+            mv dist/YoutubeDLT.exe dist_final/YoutubeDLT-Windows.exe
+
+          else
+            # macOS (arm64, no Intel compatibility)
+            pyinstaller \
+              --noconfirm \
+              --clean \
+              --onefile \
+              --windowed \
+              --name YoutubeDLT \
+              --hidden-import yt_dlp \
+              --hidden-import PyQt6.QtWidgets \
+              --hidden-import PyQt6.QtCore \
+              --hidden-import PyQt6.QtGui \
+              --hidden-import PyQt6.QtNetwork \
+              --hidden-import PyQt6.sip \
+              --hidden-import certifi \
+              --collect-all yt_dlp \
+              --collect-all PyQt6 \
+              --target-arch arm64 \
+              main.py
+
+            # 打包成 DMG
+            brew install create-dmg
+
+            mkdir -p dist_final
+            # 创建一个临时文件夹，只放入 .app（推荐用户拖拽安装）
+            mkdir -p dist_temp
+            cp -R dist/YoutubeDLT.app dist_temp/
+
+            create-dmg \
+              --volname "YoutubeDLT" \
+              --volicon "" \                  # 可留空，或后续添加 .icns
+              --window-pos 200 120 \
+              --window-size 600 400 \
+              --icon-size 100 \
+              --icon "YoutubeDLT.app" 175 120 \
+              --hide-extension "YoutubeDLT.app" \
+              --app-drop-link 425 120 \
+              --no-internet-enable \
+              "dist_final/YoutubeDLT-macOS.dmg" \
+              "dist_temp/"
+
+          fi
 
       - name: Generate Build Provenance
         uses: actions/attest@v4
@@ -82,7 +135,7 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: YoutubeDLT-Windows
+          name: YoutubeDLT-${{ runner.os }}
           path: dist_final/*
           if-no-files-found: error
 
@@ -93,17 +146,19 @@ jobs:
       contents: write
 
     steps:
-      - name: Download Artifacts
+      - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
 
-      - name: Create GitHub Release + Upload EXE
+      - name: Create GitHub Release + Upload Assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.version || github.ref_name }}
-          files: artifacts/YoutubeDLT-Windows.exe
+          files: |
+            artifacts/YoutubeDLT-Windows.exe
+            artifacts/YoutubeDLT-macOS.dmg
           name: ${{ github.event.inputs.version || github.ref_name }}
           generate_release_notes: true
           draft: false
