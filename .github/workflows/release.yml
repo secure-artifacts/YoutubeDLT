@@ -60,75 +60,75 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ffmpeg
 
-      - name: Build Single EXE/App + DMG
+      # ==================== Windows 构建（独立步骤，避免引号问题） ====================
+      - name: Build Windows EXE
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          pyinstaller `
+            --noconfirm `
+            --clean `
+            --onefile `
+            --windowed `
+            --name YoutubeDLT `
+            --hidden-import yt_dlp `
+            --hidden-import PyQt6.QtWidgets `
+            --hidden-import PyQt6.QtCore `
+            --hidden-import PyQt6.QtGui `
+            --hidden-import PyQt6.QtNetwork `
+            --hidden-import PyQt6.sip `
+            --hidden-import certifi `
+            --collect-all yt_dlp `
+            --collect-all PyQt6 `
+            main.py
+
+          mkdir -p dist_final
+          Move-Item -Path dist/YoutubeDLT.exe -Destination dist_final/YoutubeDLT-Windows.exe -Force
+
+      # ==================== macOS 构建 + DMG ====================
+      - name: Build macOS App + DMG
+        if: runner.os == 'macOS'
         shell: bash
         run: |
-          set -e  # 遇到错误立即退出
+          set -e
 
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            echo "=== Building for Windows ==="
+          echo "=== Building for macOS (arm64) ==="
 
-            powershell -NoProfile -Command "
-              pyinstaller `
-                --noconfirm `
-                --clean `
-                --onefile `
-                --windowed `
-                --name YoutubeDLT `
-                --hidden-import yt_dlp `
-                --hidden-import PyQt6.QtWidgets `
-                --hidden-import PyQt6.QtCore `
-                --hidden-import PyQt6.QtGui `
-                --hidden-import PyQt6.QtNetwork `
-                --hidden-import PyQt6.sip `
-                --hidden-import certifi `
-                --collect-all yt_dlp `
-                --collect-all PyQt6 `
-                main.py
-            "
+          pyinstaller \
+            --noconfirm \
+            --clean \
+            --onefile \
+            --windowed \
+            --name YoutubeDLT \
+            --hidden-import yt_dlp \
+            --hidden-import PyQt6.QtWidgets \
+            --hidden-import PyQt6.QtCore \
+            --hidden-import PyQt6.QtGui \
+            --hidden-import PyQt6.QtNetwork \
+            --hidden-import PyQt6.sip \
+            --hidden-import certifi \
+            --collect-all yt_dlp \
+            --collect-all PyQt6 \
+            --target-arch arm64 \
+            main.py
 
-            mkdir -p dist_final
-            mv dist/YoutubeDLT.exe dist_final/YoutubeDLT-Windows.exe
+          # 打包成 DMG
+          brew install create-dmg
 
-          else
-            echo "=== Building for macOS (arm64) ==="
+          mkdir -p dist_final dist_temp
+          cp -R dist/YoutubeDLT.app dist_temp/
 
-            pyinstaller \
-              --noconfirm \
-              --clean \
-              --onefile \
-              --windowed \
-              --name YoutubeDLT \
-              --hidden-import yt_dlp \
-              --hidden-import PyQt6.QtWidgets \
-              --hidden-import PyQt6.QtCore \
-              --hidden-import PyQt6.QtGui \
-              --hidden-import PyQt6.QtNetwork \
-              --hidden-import PyQt6.sip \
-              --hidden-import certifi \
-              --collect-all yt_dlp \
-              --collect-all PyQt6 \
-              --target-arch arm64 \
-              main.py
-
-            # 打包 DMG
-            brew install create-dmg
-
-            mkdir -p dist_final dist_temp
-            cp -R dist/YoutubeDLT.app dist_temp/
-
-            create-dmg \
-              --volname "YoutubeDLT" \
-              --window-pos 200 120 \
-              --window-size 600 400 \
-              --icon-size 100 \
-              --icon "YoutubeDLT.app" 175 120 \
-              --hide-extension "YoutubeDLT.app" \
-              --app-drop-link 425 120 \
-              --no-internet-enable \
-              "dist_final/YoutubeDLT-macOS.dmg" \
-              "dist_temp/"
-          fi
+          create-dmg \
+            --volname "YoutubeDLT" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "YoutubeDLT.app" 175 120 \
+            --hide-extension "YoutubeDLT.app" \
+            --app-drop-link 425 120 \
+            --no-internet-enable \
+            "dist_final/YoutubeDLT-macOS.dmg" \
+            "dist_temp/"
 
       - name: Generate Build Provenance
         uses: actions/attest@v4
