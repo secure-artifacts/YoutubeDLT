@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch: # 手动触发测试用
+  workflow_dispatch:
     inputs:
       version:
         description: '版本号 (例如: v2.0.0)'
@@ -60,32 +60,35 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ffmpeg
 
-      - name: Build Single EXE/App
+      - name: Build Single EXE/App + DMG
         shell: bash
         run: |
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            pyinstaller `
-              --noconfirm `
-              --clean `
-              --onefile `
-              --windowed `
-              --name YoutubeDLT `
-              --hidden-import yt_dlp `
-              --hidden-import PyQt6.QtWidgets `
-              --hidden-import PyQt6.QtCore `
-              --hidden-import PyQt6.QtGui `
-              --hidden-import PyQt6.QtNetwork `
-              --hidden-import PyQt6.sip `
-              --hidden-import certifi `
-              --collect-all yt_dlp `
-              --collect-all PyQt6 `
-              main.py
+            # Windows 使用 powershell 风格的多行（因为 pyinstaller 参数太多）
+            powershell -Command "
+              pyinstaller `
+                --noconfirm `
+                --clean `
+                --onefile `
+                --windowed `
+                --name YoutubeDLT `
+                --hidden-import yt_dlp `
+                --hidden-import PyQt6.QtWidgets `
+                --hidden-import PyQt6.QtCore `
+                --hidden-import PyQt6.QtGui `
+                --hidden-import PyQt6.QtNetwork `
+                --hidden-import PyQt6.sip `
+                --hidden-import certifi `
+                --collect-all yt_dlp `
+                --collect-all PyQt6 `
+                main.py
+            "
 
             mkdir -p dist_final
             mv dist/YoutubeDLT.exe dist_final/YoutubeDLT-Windows.exe
 
           else
-            # macOS (arm64, no Intel compatibility)
+            # macOS (arm64)
             pyinstaller \
               --noconfirm \
               --clean \
@@ -107,14 +110,11 @@ jobs:
             # 打包成 DMG
             brew install create-dmg
 
-            mkdir -p dist_final
-            # 创建一个临时文件夹，只放入 .app（推荐用户拖拽安装）
-            mkdir -p dist_temp
+            mkdir -p dist_final dist_temp
             cp -R dist/YoutubeDLT.app dist_temp/
 
             create-dmg \
               --volname "YoutubeDLT" \
-              --volicon "" \                  # 可留空，或后续添加 .icns
               --window-pos 200 120 \
               --window-size 600 400 \
               --icon-size 100 \
@@ -124,7 +124,6 @@ jobs:
               --no-internet-enable \
               "dist_final/YoutubeDLT-macOS.dmg" \
               "dist_temp/"
-
           fi
 
       - name: Generate Build Provenance
@@ -164,3 +163,4 @@ jobs:
           draft: false
           prerelease: false
           make_latest: true
+          overwrite: true        # 允许手动重新触发时覆盖旧文件
