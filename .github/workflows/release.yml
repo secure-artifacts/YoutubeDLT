@@ -61,7 +61,7 @@ jobs:
             brew install ffmpeg
           fi
 
-      # ==================== Windows 构建（尽量保持你原来成功的写法） ====================
+      # ==================== Windows 构建（使用 PowerShell，保留你原来的成功逻辑） ====================
       - name: Build Windows EXE
         if: runner.os == 'Windows'
         shell: powershell
@@ -72,7 +72,7 @@ jobs:
             --onefile `
             --windowed `
             --name YoutubeDLT `
-            --icon app_icon.ico `          # ← Windows 使用你本地的图标
+            --icon app_icon.ico `
             --hidden-import yt_dlp `
             --hidden-import PyQt6.QtWidgets `
             --hidden-import PyQt6.QtCore `
@@ -94,6 +94,8 @@ jobs:
         run: |
           set -e
 
+          echo "=== Building YoutubeDLT for macOS (arm64) ==="
+
           pyinstaller \
             --noconfirm \
             --clean \
@@ -112,7 +114,8 @@ jobs:
             --target-arch arm64 \
             main.py
 
-          # 打包成 DMG（无图标版本）
+          echo "=== Creating DMG package ==="
+
           brew install create-dmg
 
           mkdir -p dist_final dist_temp
@@ -128,6 +131,8 @@ jobs:
             --no-internet-enable \
             "dist_final/YoutubeDLT-macOS.dmg" \
             "dist_temp/"
+
+          echo "=== macOS build completed ==="
 
       - name: Generate Build Provenance
         uses: actions/attest@v4
