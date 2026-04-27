@@ -22,6 +22,7 @@ jobs:
     strategy:
       matrix:
         os: [windows-latest, macos-latest]
+
     permissions:
       id-token: write
       contents: write
@@ -52,18 +53,18 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Install ffmpeg (Windows)
-        if: runner.os == 'Windows'
-        run: choco install ffmpeg -y --no-progress
+      - name: Install ffmpeg
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            choco install ffmpeg -y --no-progress
+          else
+            brew install ffmpeg
+          fi
 
-      - name: Install ffmpeg (macOS)
-        if: runner.os == 'macOS'
-        run: brew install ffmpeg
-
-      # ==================== Windows 构建（独立步骤，避免引号问题） ====================
+      # ==================== Windows 构建（尽量保持你原来成功的写法） ====================
       - name: Build Windows EXE
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: powershell
         run: |
           pyinstaller `
             --noconfirm `
@@ -71,6 +72,7 @@ jobs:
             --onefile `
             --windowed `
             --name YoutubeDLT `
+            --icon app_icon.ico `          # ← Windows 使用你本地的图标
             --hidden-import yt_dlp `
             --hidden-import PyQt6.QtWidgets `
             --hidden-import PyQt6.QtCore `
@@ -85,14 +87,12 @@ jobs:
           mkdir -p dist_final
           Move-Item -Path dist/YoutubeDLT.exe -Destination dist_final/YoutubeDLT-Windows.exe -Force
 
-      # ==================== macOS 构建 + DMG ====================
+      # ==================== macOS 构建（不使用图标） ====================
       - name: Build macOS App + DMG
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -e
-
-          echo "=== Building for macOS (arm64) ==="
 
           pyinstaller \
             --noconfirm \
@@ -112,7 +112,7 @@ jobs:
             --target-arch arm64 \
             main.py
 
-          # 打包成 DMG
+          # 打包成 DMG（无图标版本）
           brew install create-dmg
 
           mkdir -p dist_final dist_temp
@@ -123,7 +123,6 @@ jobs:
             --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 100 \
-            --icon "YoutubeDLT.app" 175 120 \
             --hide-extension "YoutubeDLT.app" \
             --app-drop-link 425 120 \
             --no-internet-enable \
