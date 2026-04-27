@@ -5,3 +5,15 @@
 界面新增了一个复选框，放在质量选择下面，很好找
 
 保存后运行，粘贴你的链接（带 list=RD... 的那个），默认就是只下单个视频了。如果勾选复选框再下载，就会下整个 Radio 列表。
+
+# 1. 先暂存或丢弃本地修改（.gitignore 的修改我们不关心）
+git stash
+# 2. 强制拉取 GitHub 上最新的 master 分支（覆盖本地）
+git fetch origin
+git reset --hard origin/master
+# 3. 确认已经是最新
+git status
+git log --oneline -5
+# 4. 创建测试 tag 并推送（使用最新的 workflow）
+git tag -a v2.0.X -m "Release v2.0.X"
+git push origin v2.0.X
