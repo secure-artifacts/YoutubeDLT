@@ -22,6 +22,7 @@ jobs:
     strategy:
       matrix:
         os: [windows-latest, macos-latest]
+      max-parallel: 1        # 取消并行，一个一个顺序执行
 
     permissions:
       id-token: write
@@ -53,6 +54,7 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      # ==================== Install ffmpeg ====================
       - name: Install ffmpeg (Windows)
         if: runner.os == 'Windows'
         run: choco install ffmpeg -y --no-progress
@@ -61,8 +63,8 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ffmpeg
 
-      # ==================== Windows 构建（加强版） ====================
-      - name: Build Windows EXE
+      # ==================== Windows 构建（完全使用你提供的原始成功配置） ====================
+      - name: Build Single EXE (Windows)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
@@ -78,24 +80,23 @@ jobs:
             --hidden-import PyQt6.QtCore `
             --hidden-import PyQt6.QtGui `
             --hidden-import PyQt6.QtNetwork `
-            --hidden-import PyQt6.QtDBus `
-            --hidden-import PyQt6.QtSvg `
             --hidden-import PyQt6.sip `
             --hidden-import certifi `
             --collect-all yt_dlp `
             --collect-all PyQt6 `
-            --collect-submodules PyQt6 `
             main.py
 
+          # 创建最终目录并重命名
           mkdir -p dist_final
           Move-Item -Path dist/YoutubeDLT.exe -Destination dist_final/YoutubeDLT-Windows.exe -Force
 
-      # ==================== macOS 构建（无图标） ====================
+      # ==================== macOS 构建（不使用图标） ====================
       - name: Build macOS App + DMG
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -e
+
           echo "=== Building for macOS (arm64) ==="
 
           pyinstaller \
@@ -116,7 +117,8 @@ jobs:
             --target-arch arm64 \
             main.py
 
-          echo "=== Creating DMG ==="
+          echo "=== Creating DMG package ==="
+
           brew install create-dmg
 
           mkdir -p dist_final dist_temp
@@ -132,6 +134,8 @@ jobs:
             --no-internet-enable \
             "dist_final/YoutubeDLT-macOS.dmg" \
             "dist_temp/"
+
+          echo "=== macOS build completed ==="
 
       - name: Generate Build Provenance
         uses: actions/attest@v4
@@ -150,6 +154,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
