@@ -46,7 +46,7 @@ APP_RELEASES_URL = f"{APP_GITHUB_REPO}/releases/latest"
 APP_GITHUB_API_URL = f"https://api.github.com/repos/secure-artifacts/YoutubeDLT/releases/latest"  # ←←← 必须修改
 
 # 程序当前版本号（每次发布新版本时请在这里更新）
-APP_CURRENT_VERSION = "2.0.0"   # ←←← 推荐使用 1.2.3 格式
+APP_CURRENT_VERSION = "2.0.6"   # ←←← 推荐使用 1.2.3 格式
 
 # 单实例锁
 LOCK_FILE = os.path.join(CONFIG_DIR, "app.lock")
