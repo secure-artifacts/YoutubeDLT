@@ -182,14 +182,12 @@ class DownloadWorker(QThread):
                     pass
             elif d['status'] == 'finished':
                 self.log.emit("[download] 100% 下载完成")
-                self.log.emit("开始合并/转换（此阶段无精确进度，请耐心等待）...")
-                self.status.emit("合并中...")
+                self.status.emit("处理中...")
             if 'filename' in d:
                 self.current_file.emit(os.path.basename(d['filename']))
 
+        # ================== 格式设置 ==================
         format_str = "bestvideo*+bestaudio/best"
-        merge_format = "mp4"
-        postprocessors = []
         q = self.quality_mode
 
         if q == "1080p（或更低）":
@@ -202,14 +200,31 @@ class DownloadWorker(QThread):
             format_str = "bestvideo[height<=360][vcodec^=avc1]+bestaudio[ext=m4a]/best[ext=mp4]"
         elif q == "仅音频（MP3 192kbps）":
             format_str = "bestaudio/best"
-            merge_format = None
-            postprocessors = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
 
+        # ================== 智能查找 ffmpeg（支持打包和系统安装） ==================
+        import shutil
+        import sys
+
+        ffmpeg_path = shutil.which('ffmpeg')
+
+        # 如果是打包后的程序（onefile），尝试从临时目录查找打包的 ffmpeg
+        if not ffmpeg_path and getattr(sys, 'frozen', False):
+            base_path = sys._MEIPASS
+            if sys.platform == "win32":
+                candidate = os.path.join(base_path, "ffmpeg", "ffmpeg.exe")
+            else:  # macOS
+                candidate = os.path.join(base_path, "ffmpeg")
+            if os.path.exists(candidate):
+                ffmpeg_path = candidate
+                # 把 ffmpeg 目录加入 PATH，让 yt-dlp 能找到
+                os.environ["PATH"] = os.path.dirname(ffmpeg_path) + os.pathsep + os.environ.get("PATH", "")
+
+        has_ffmpeg = bool(ffmpeg_path)
+
+        # ================== 设置 yt-dlp 参数 ==================
         opts = {
             'outtmpl': os.path.join(self.save_dir, '%(title)s.%(ext)s'),
             'format': format_str,
-            'merge_output_format': merge_format,
-            'postprocessors': postprocessors,
             'progress_hooks': [hook],
             'continuedl': True,
             'quiet': True,
@@ -219,14 +234,36 @@ class DownloadWorker(QThread):
             'noplaylist': not self.download_playlist,
         }
 
+        if not has_ffmpeg:
+            # 没有 ffmpeg 时自动切换为不合并模式
+            self.log.emit("[警告] 未检测到 ffmpeg，已自动切换为不合并模式")
+            self.log.emit("       （视频和音频会分开保存，但仍可正常播放）")
+            opts['merge_output_format'] = None
+            
+            if q == "仅音频（MP3 192kbps）":
+                opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 
+                                         'preferredcodec': 'mp3', 
+                                         'preferredquality': '192'}]
+        else:
+            # 有 ffmpeg 时正常合并
+            if q != "仅音频（MP3 192kbps）":
+                opts['merge_output_format'] = 'mp4'
+            else:
+                opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 
+                                         'preferredcodec': 'mp3', 
+                                         'preferredquality': '192'}]
+
+        # Cookie 支持
         if self.cookie_file and os.path.exists(self.cookie_file):
             opts['cookiefile'] = self.cookie_file
             self.log.emit(f"[Cookie] 使用 Cookie 文件：{os.path.basename(self.cookie_file)}")
 
+        # ================== 执行下载 ==================
         try:
             os.makedirs(self.save_dir, exist_ok=True)
             self.status.emit("下载中...")
             self.log.emit("[开始] 正在提取信息并准备下载...")
+            
             with YoutubeDL(opts) as ydl:
                 ydl.download([self.url])
 
@@ -272,8 +309,8 @@ class MainWindow(QWidget):
         self.combo_quality.currentTextChanged.connect(ConfigManager.save_quality)
 
         QTimer.singleShot(1500, self.check_app_update)
-
         self.check_latest_version()
+
         self.version_timer = QTimer(self)
         self.version_timer.setInterval(86400000)
         self.version_timer.timeout.connect(self.check_latest_version)
@@ -376,7 +413,7 @@ class MainWindow(QWidget):
 
         self.btn_cancel = QPushButton("取消全部")
         self.btn_cancel.setEnabled(False)
-        self.btn_cancel.clicked.connect(self.cancel_all)        # ← 这里已修复
+        self.btn_cancel.clicked.connect(self.cancel_all)
         btn_layout.addWidget(self.btn_cancel)
         layout.addLayout(btn_layout)
 
@@ -397,7 +434,7 @@ class MainWindow(QWidget):
 
         self.setLayout(layout)
 
-    # ================== 更新相关（已修复 PyQt6） ==================
+    # ================== 更新相关 ==================
     def check_app_update(self):
         def fetch():
             latest = VersionChecker.get_latest_version(APP_GITHUB_API_URL)
@@ -498,7 +535,6 @@ class MainWindow(QWidget):
             QMessageBox.warning(self, "提示", "没有找到有效的 YouTube 链接")
             return
 
-        # 频道批量警告
         is_channel = any(x in urls[0].lower() for x in ['/channel/', '/@', '/c/', '/user/'])
         if is_channel and self.cb_playlist.isChecked() and len(urls) == 1:
             reply = QMessageBox.question(
