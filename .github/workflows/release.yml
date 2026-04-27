@@ -53,15 +53,16 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Install ffmpeg
-        run: |
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            choco install ffmpeg -y --no-progress
-          else
-            brew install ffmpeg
-          fi
+      # ==================== Install ffmpeg（分开写，避免 shell 问题） ====================
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg -y --no-progress
 
-      # ==================== Windows 构建（使用 PowerShell，保留你原来的成功逻辑） ====================
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+
+      # ==================== Windows 构建（保留你原来成功的写法） ====================
       - name: Build Windows EXE
         if: runner.os == 'Windows'
         shell: powershell
