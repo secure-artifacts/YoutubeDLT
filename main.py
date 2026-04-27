@@ -528,4 +528,89 @@ class MainWindow(QWidget):
 
         self.start_next_download(urls[0], quality, playlist, cookie_file)
 
-    def start_next
+    def start_next_download(self, url, quality, playlist, cookie_file):
+        self.worker = DownloadWorker(url, self.download_path, quality, playlist, cookie_file)
+        self.worker.log.connect(self.append_log)
+        self.worker.status.connect(self.lbl_status.setText)
+        self.worker.current_file.connect(lambda f: self.lbl_file.setText(f"当前文件：{f}"))
+        self.worker.finished.connect(self.on_one_finished)
+
+        self.append_log(f"───── 开始 ({self.finished_count + 1}/{self.total_count}) ─────")
+        self.append_log(f"链接：{url}")
+        self.lbl_progress.setText(f"进度：{self.finished_count + 1} / {self.total_count}")
+        self.worker.start()
+        self.btn_main.setText("暂停当前")
+        self.btn_cancel.setEnabled(True)
+        self.lbl_status.setText(f"正在下载 ({self.finished_count + 1}/{self.total_count})")
+
+    def on_one_finished(self, success, msg):
+        self.append_log(f"───── {msg} ─────")
+        self.finished_count += 1
+        self.lbl_progress.setText(f"进度：{self.finished_count} / {self.total_count}")
+
+        if self.finished_count >= self.total_count:
+            self.append_log("所有任务处理完毕")
+            self.lbl_status.setText("全部完成")
+            if success:
+                QMessageBox.information(self, "完成", f"已处理 {self.total_count} 个任务")
+            self.reset_ui()
+            self.pending_urls = []
+        else:
+            if self.pending_urls:
+                next_url = self.pending_urls.pop(0)
+                quality = self.combo_quality.currentText()
+                playlist = self.cb_playlist.isChecked()
+                cookie_file = self.cookie_file if self.cb_cookie.isChecked() else None
+                self.start_next_download(next_url, quality, playlist, cookie_file)
+            else:
+                self.reset_ui()
+
+    def cancel_all(self):
+        if self.worker and self.worker.isRunning():
+            self.worker.request_stop()
+            self.worker.wait(3000)
+        self.pending_urls = []
+        self.reset_ui()
+        self.append_log("全部任务已取消")
+
+    def reset_ui(self):
+        self.btn_main.setText("开始下载")
+        self.btn_cancel.setEnabled(False)
+        self.lbl_status.setText("就绪")
+        self.lbl_progress.setText("进度： - / - ")
+        self.lbl_file.setText("当前文件： - ")
+
+    def append_log(self, text):
+        ts = datetime.datetime.now().strftime("%H:%M:%S")
+        self.log_area.append(f"[{ts}] {text}")
+        if any(kw in text for kw in ["[download]", "完成", "错误", "暂停", "─────", "[Cookie]"]):
+            self.log_area.verticalScrollBar().setValue(self.log_area.verticalScrollBar().maximum())
+
+
+# ================== 自定义事件类 ==================
+class AppUpdateEvent(QEvent):
+    def __init__(self, latest):
+        super().__init__(QEvent.Type(QEvent.Type.User.value + 1))
+        self.latest = latest
+
+
+class UpdateVersionEvent(QEvent):
+    def __init__(self, latest):
+        super().__init__(QEvent.Type(QEvent.Type.User.value))
+        self.latest = latest
+
+
+if __name__ == "__main__":
+    import ctypes
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('com.yt.downloader.v4')
+    except:
+        pass
+
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    window = MainWindow()
+    window.show()
+    exit_code = app.exec()
+    remove_lock_file()
+    sys.exit(exit_code)
