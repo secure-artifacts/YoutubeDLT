@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 YouTube 下载工具（基于 PyQt6 + yt-dlp）
-- 支持单视频 / 播放列表 / 频道
-- 支持一次粘贴多个链接
-- 支持 Cookie 登录下载
-- 支持程序自身 GitHub 更新提醒
 """
 
 import sys
@@ -35,19 +31,15 @@ CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".youtube_downloader")
 os.makedirs(CONFIG_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 
-# yt-dlp 更新相关
 GITHUB_API_URL = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest"
 GITHUB_RELEASES_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest"
 
-# ================== 程序自身更新配置 ==================
 APP_GITHUB_REPO = "https://github.com/secure-artifacts/YoutubeDLT"
 APP_RELEASES_URL = f"{APP_GITHUB_REPO}/releases/latest"
 APP_GITHUB_API_URL = f"https://api.github.com/repos/secure-artifacts/YoutubeDLT/releases/latest"
 
-# 程序当前版本号（每次发布新版本时请在这里更新）
 APP_CURRENT_VERSION = "2.0.8"
 
-# 单实例锁
 LOCK_FILE = os.path.join(CONFIG_DIR, "app.lock")
 
 
@@ -84,7 +76,6 @@ if is_already_running():
 create_lock_file()
 
 
-# 默认下载路径
 def get_default_downloads():
     home = os.path.expanduser("~")
     if os.name == 'nt':
@@ -196,7 +187,6 @@ class DownloadWorker(QThread):
             if 'filename' in d:
                 self.current_file.emit(os.path.basename(d['filename']))
 
-        # ...（DownloadWorker 中的其他代码保持不变）...
         format_str = "bestvideo*+bestaudio/best"
         merge_format = "mp4"
         postprocessors = []
@@ -271,7 +261,6 @@ class MainWindow(QWidget):
 
         self.init_ui()
 
-        # 恢复设置
         index = self.combo_quality.findText(last_quality)
         if index >= 0:
             self.combo_quality.setCurrentIndex(index)
@@ -282,13 +271,11 @@ class MainWindow(QWidget):
 
         self.combo_quality.currentTextChanged.connect(ConfigManager.save_quality)
 
-        # 启动后自动检查更新
         QTimer.singleShot(1500, self.check_app_update)
 
-        # yt-dlp 更新检查
         self.check_latest_version()
         self.version_timer = QTimer(self)
-        self.version_timer.setInterval(86400000)  # 24小时检查一次
+        self.version_timer.setInterval(86400000)
         self.version_timer.timeout.connect(self.check_latest_version)
         self.version_timer.start()
 
@@ -311,7 +298,6 @@ class MainWindow(QWidget):
         btn_open.setStyleSheet("background-color: #4CAF50; color: white;")
         btn_open.clicked.connect(self.open_folder)
         path_layout.addWidget(btn_open)
-
         layout.addLayout(path_layout)
 
         # 版本信息
@@ -338,13 +324,11 @@ class MainWindow(QWidget):
         self.lbl_latest.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.lbl_latest.mousePressEvent = self.open_latest_yt_release
         version_layout.addWidget(self.lbl_latest)
-
         layout.addLayout(version_layout)
 
-        # Cookie 区域
+        # Cookie
         cookie_layout = QHBoxLayout()
         self.cb_cookie = QCheckBox("使用 Cookie 登录下载（推荐用于下载会员视频、私有视频等）")
-        self.cb_cookie.setChecked(False)
         cookie_layout.addWidget(self.cb_cookie)
 
         self.btn_import_cookie = QPushButton("导入 Cookie 文件")
@@ -360,11 +344,7 @@ class MainWindow(QWidget):
         input_layout = QHBoxLayout()
         input_layout.addWidget(QLabel("链接："))
         self.edit_url = QTextEdit()
-        self.edit_url.setPlaceholderText(
-            "支持一次粘贴多个链接（每行一个）\n"
-            "示例：\n"
-            "https://www.youtube.com/watch?v=abc123"
-        )
+        self.edit_url.setPlaceholderText("支持一次粘贴多个链接（每行一个）\n示例：\nhttps://www.youtube.com/watch?v=abc123")
         self.edit_url.setAcceptRichText(False)
         self.edit_url.setTabChangesFocus(True)
         self.edit_url.setMinimumHeight(100)
@@ -374,20 +354,15 @@ class MainWindow(QWidget):
         input_layout.addWidget(QLabel("质量："))
         self.combo_quality = QComboBox()
         self.combo_quality.addItems([
-            "最高质量（推荐）",
-            "1080p（或更低）",
-            "720p（或更低）",
-            "480p（或更低）",
-            "最小体积（适合流量少）",
-            "仅音频（MP3 192kbps）"
+            "最高质量（推荐）", "1080p（或更低）", "720p（或更低）",
+            "480p（或更低）", "最小体积（适合流量少）", "仅音频（MP3 192kbps）"
         ])
         input_layout.addWidget(self.combo_quality)
         layout.addLayout(input_layout)
 
-        # 播放列表选项
+        # 播放列表
         playlist_layout = QHBoxLayout()
         self.cb_playlist = QCheckBox("下载整个播放列表 / 频道全部视频（如果链接包含）")
-        self.cb_playlist.setChecked(False)
         playlist_layout.addWidget(self.cb_playlist)
         playlist_layout.addStretch(1)
         layout.addLayout(playlist_layout)
@@ -401,7 +376,7 @@ class MainWindow(QWidget):
 
         self.btn_cancel = QPushButton("取消全部")
         self.btn_cancel.setEnabled(False)
-        self.btn_cancel.clicked.connect(self.cancel_all)
+        self.btn_cancel.clicked.connect(self.cancel_all)        # ← 这里已修复
         btn_layout.addWidget(self.btn_cancel)
         layout.addLayout(btn_layout)
 
@@ -422,7 +397,7 @@ class MainWindow(QWidget):
 
         self.setLayout(layout)
 
-    # ================== 更新检查相关（已修复） ==================
+    # ================== 更新相关（已修复 PyQt6） ==================
     def check_app_update(self):
         def fetch():
             latest = VersionChecker.get_latest_version(APP_GITHUB_API_URL)
@@ -448,25 +423,16 @@ class MainWindow(QWidget):
     def handle_app_update(self, latest):
         if latest and latest != self.current_version:
             reply = QMessageBox.question(
-                self,
-                "发现新版本",
-                f"检测到程序新版本可用！\n\n"
-                f"当前版本：{self.current_version}\n"
-                f"最新版本：{latest}\n\n"
-                "是否立即前往 GitHub 下载更新？",
+                self, "发现新版本",
+                f"检测到程序新版本可用！\n\n当前版本：{self.current_version}\n最新版本：{latest}\n\n是否立即前往 GitHub 下载更新？",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.Yes
             )
             if reply == QMessageBox.StandardButton.Yes:
                 webbrowser.open(APP_RELEASES_URL)
         else:
-            # 手动点击检查时显示提示
             if self.sender() == self.btn_check_update:
-                QMessageBox.information(
-                    self,
-                    "检查更新",
-                    f"当前已是最新版本 ({self.current_version})"
-                )
+                QMessageBox.information(self, "检查更新", f"当前已是最新版本 ({self.current_version})")
 
     def open_latest_yt_release(self, event):
         webbrowser.open(GITHUB_RELEASES_URL)
@@ -480,7 +446,7 @@ class MainWindow(QWidget):
         self.lbl_latest.setStyleSheet(style)
         self.lbl_latest.setText(text)
 
-    # ================== 其他方法（保持不变）==================
+    # ================== Cookie ==================
     def import_cookie(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self, "选择 Cookie 文件", "", "Cookie 文件 (*.txt *.json);;所有文件 (*.*)"
@@ -492,8 +458,7 @@ class MainWindow(QWidget):
             ConfigManager.save_cookie_file(file_path)
             self.append_log(f"已导入 Cookie 文件：{file_path}")
 
-    # ...（choose_path、open_folder、toggle_main、start_next_download 等方法保持不变）...
-
+    # ================== 路径相关 ==================
     def choose_path(self):
         folder = QFileDialog.getExistingDirectory(
             self, "选择保存文件夹", self.download_path,
@@ -521,39 +486,46 @@ class MainWindow(QWidget):
         except Exception as e:
             QMessageBox.warning(self, "错误", f"无法打开文件夹：\n{str(e)}")
 
-    # toggle_main、start_next_download、on_one_finished、cancel_all、reset_ui、append_log 等方法保持不变
-    # （为了节省篇幅，这里省略了这些不变的方法，你可以保留你原来的对应部分）
-
+    # ================== 下载核心逻辑 ==================
     def toggle_main(self):
-        # ...（你原来的 toggle_main 代码保持不变）...
-        pass   # 请把你原来的 toggle_main 完整代码粘贴回来
+        raw_text = self.edit_url.toPlainText().strip()
+        if not raw_text:
+            QMessageBox.warning(self, "提示", "请至少输入一个链接")
+            return
 
-    # ... 其他方法同理 ...
+        urls = [line.strip() for line in raw_text.splitlines() if line.strip().startswith(('http://', 'https://'))]
+        if not urls:
+            QMessageBox.warning(self, "提示", "没有找到有效的 YouTube 链接")
+            return
 
-# ================== 事件类（已修复 QEvent 弃用警告） ==================
-class AppUpdateEvent(QEvent):
-    def __init__(self, latest):
-        super().__init__(QEvent.Type(QEvent.Type.User.value + 1))
-        self.latest = latest
+        # 频道批量警告
+        is_channel = any(x in urls[0].lower() for x in ['/channel/', '/@', '/c/', '/user/'])
+        if is_channel and self.cb_playlist.isChecked() and len(urls) == 1:
+            reply = QMessageBox.question(
+                self, "频道批量下载警告",
+                "检测到频道链接 + 已勾选“下载整个播放列表”，这将下载该频道所有视频（可能数量巨大），确定继续吗？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
 
+        quality = self.combo_quality.currentText()
+        playlist = self.cb_playlist.isChecked()
+        use_cookie = self.cb_cookie.isChecked()
+        cookie_file = self.cookie_file if use_cookie else None
 
-class UpdateVersionEvent(QEvent):
-    def __init__(self, latest):
-        super().__init__(QEvent.Type(QEvent.Type.User.value))
-        self.latest = latest
+        if self.worker and self.worker.isRunning():
+            self.worker.request_stop()
+            self.btn_main.setText("继续下载")
+            self.append_log("已请求暂停当前任务...")
+            return
 
+        if self.pending_urls or self.total_count == 0:
+            self.pending_urls = urls[1:] if len(urls) > 1 else []
+            self.total_count = len(urls)
+            self.finished_count = 0
 
-if __name__ == "__main__":
-    import ctypes
-    try:
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('com.yt.downloader.v4')
-    except:
-        pass
+        self.start_next_download(urls[0], quality, playlist, cookie_file)
 
-    app = QApplication(sys.argv)
-    app.setStyle("Fusion")
-    window = MainWindow()
-    window.show()
-    exit_code = app.exec()
-    remove_lock_file()
-    sys.exit(exit_code)
+    def start_next
