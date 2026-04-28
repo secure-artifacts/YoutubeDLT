@@ -17,3 +17,7 @@ git log --oneline -5
 # 4. 创建测试 tag 并推送（使用最新的 workflow）
 git tag -a v2.0.X -m "Release v2.0.X"
 git push origin v2.0.X
+
+
+正式版本（通过 git tag 推送 v* 或手动触发但不勾选 Debug）→ 只打包并推送正式版
+仅当手动触发 workflow_dispatch 并勾选 Debug 时，才额外构建并推送 Debug 版本
