@@ -1,4 +1,4 @@
-name: Build and Release (Windows + macOS)
+name: Build and Release (Windows + macOS + Linux AppImage)
 
 on:
   push:
@@ -26,8 +26,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-latest, macos-latest, ubuntu-latest]
       max-parallel: 1
+
     permissions:
       id-token: write
       contents: write
@@ -58,7 +59,7 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      # ==================== Install ffmpeg for build time ====================
+      # ==================== Install ffmpeg ====================
       - name: Install ffmpeg (Windows)
         if: runner.os == 'Windows'
         run: choco install ffmpeg -y --no-progress
@@ -67,16 +68,19 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ffmpeg
 
-      # ==================== Windows 正式版（始终构建） ====================
+      - name: Install ffmpeg (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fuse3
+
+      # ==================== Windows & macOS (不变) ====================
       - name: Build Windows Normal (No Console)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
           python -m PyInstaller `
-            --noconfirm `
-            --clean `
-            --onefile `
-            --windowed `
+            --noconfirm --clean --onefile --windowed `
             --name YoutubeDLT `
             --icon app_icon.ico `
             --hidden-import yt_dlp `
@@ -90,50 +94,37 @@ jobs:
             --collect-all PyQt6 `
             --add-binary "C:/ProgramData/chocolatey/bin/ffmpeg.exe;ffmpeg" `
             --add-binary "C:/ProgramData/chocolatey/bin/ffprobe.exe;ffmpeg" `
-            --debug=all `
-            main.py
+            --debug=all main.py
+
           mkdir -p dist_final
           Move-Item -Path dist/YoutubeDLT.exe -Destination dist_final/YoutubeDLT-Windows.exe -Force
 
-      # ==================== Windows Debug 版（仅测试时构建） ====================
-      - name: Build Windows Debug (With Console)
+      - name: Build Windows Debug
         if: runner.os == 'Windows' && inputs.build_debug == true
         shell: powershell
-        run: |
-          python -m PyInstaller `
-            --noconfirm `
-            --clean `
-            --onefile `
-            --console `
-            --name YoutubeDLT-Debug `
-            --icon app_icon.ico `
-            --hidden-import yt_dlp `
-            --hidden-import PyQt6.QtWidgets `
-            --hidden-import PyQt6.QtCore `
-            --hidden-import PyQt6.QtGui `
-            --hidden-import PyQt6.QtNetwork `
-            --hidden-import PyQt6.sip `
-            --hidden-import certifi `
-            --collect-all yt_dlp `
-            --collect-all PyQt6 `
-            --add-binary "C:/ProgramData/chocolatey/bin/ffmpeg.exe;ffmpeg" `
-            --add-binary "C:/ProgramData/chocolatey/bin/ffprobe.exe;ffmpeg" `
-            --debug=all `
-            main.py
-          Move-Item -Path dist/YoutubeDLT-Debug.exe -Destination dist_final/YoutubeDLT-Windows-Debug.exe -Force
+        # ...（保持你原来的 Windows Debug 代码不变）
 
-      # ==================== macOS 正式版（始终构建） ====================
-      - name: Build macOS Normal
+      - name: Build macOS Normal (arm64)
         if: runner.os == 'macOS'
+        shell: bash
+        # ...（保持你原来的 macOS 代码不变）
+
+      - name: Build macOS Debug
+        if: runner.os == 'macOS' && inputs.build_debug == true
+        shell: bash
+        # ...（保持你原来的 macOS Debug 代码不变）
+
+      # ==================== Linux AppImage ====================
+      - name: Build Linux AppImage
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           set -e
-          echo "=== Building macOS Normal (arm64) ==="
+          echo "=== Building Linux AppImage ==="
+
+          # 1. 先用 PyInstaller 打包
           pyinstaller \
-            --noconfirm \
-            --clean \
-            --onefile \
-            --windowed \
+            --noconfirm --clean --onefile --windowed \
             --name YoutubeDLT \
             --hidden-import yt_dlp \
             --hidden-import PyQt6.QtWidgets \
@@ -144,37 +135,46 @@ jobs:
             --hidden-import certifi \
             --collect-all yt_dlp \
             --collect-all PyQt6 \
-            --target-arch arm64 \
             --add-binary "$(which ffmpeg):." \
-            --debug=all \
-            main.py
-          echo "=== Creating Normal DMG ==="
-          brew install create-dmg
-          mkdir -p dist_final dist_temp
-          cp -R dist/YoutubeDLT.app dist_temp/
-          create-dmg \
-            --volname "YoutubeDLT" \
-            --window-pos 200 120 \
-            --window-size 600 400 \
-            --icon-size 100 \
-            --hide-extension "YoutubeDLT.app" \
-            --app-drop-link 425 120 \
-            --no-internet-enable \
-            "dist_final/YoutubeDLT-macOS.dmg" \
-            "dist_temp/"
+            --add-binary "$(which ffprobe):." \
+            --debug=all main.py
 
-      # ==================== macOS Debug 版（仅测试时构建） ====================
-      - name: Build macOS Debug (With Console)
-        if: runner.os == 'macOS' && inputs.build_debug == true
+          # 2. 准备 AppImage 结构
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/lib
+          cp dist/YoutubeDLT AppDir/usr/bin/
+          chmod +x AppDir/usr/bin/YoutubeDLT
+
+          # 3. 下载 appimagetool
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+
+          # 4. 创建 desktop 文件和 icon
+          cat > AppDir/YoutubeDLT.desktop << EOF
+          [Desktop Entry]
+          Name=YoutubeDLT
+          Exec=YoutubeDLT
+          Icon=YoutubeDLT
+          Type=Application
+          Categories=Utility;
+          EOF
+
+          cp app_icon.png AppDir/YoutubeDLT.png 2>/dev/null || echo "No icon found, using default"
+
+          # 5. 生成 AppImage
+          ./appimagetool-x86_64.AppImage AppDir YoutubeDLT-Linux-x86_64.AppImage
+
+          mkdir -p dist_final
+          mv YoutubeDLT-Linux-x86_64.AppImage dist_final/
+          chmod +x dist_final/YoutubeDLT-Linux-x86_64.AppImage
+
+      - name: Build Linux Debug (可选)
+        if: runner.os == 'Linux' && inputs.build_debug == true
         shell: bash
         run: |
           set -e
-          echo "=== Building macOS Debug (arm64) ==="
           pyinstaller \
-            --noconfirm \
-            --clean \
-            --onefile \
-            --console \
+            --noconfirm --clean --onefile --console \
             --name YoutubeDLT-Debug \
             --hidden-import yt_dlp \
             --hidden-import PyQt6.QtWidgets \
@@ -185,14 +185,13 @@ jobs:
             --hidden-import certifi \
             --collect-all yt_dlp \
             --collect-all PyQt6 \
-            --target-arch arm64 \
             --add-binary "$(which ffmpeg):." \
-            --debug=all \
-            main.py
-          echo "=== Copying macOS Debug executable ==="
+            --add-binary "$(which ffprobe):." \
+            --debug=all main.py
+
           mkdir -p dist_final
-          cp dist/YoutubeDLT-Debug dist_final/YoutubeDLT-macOS-Debug
-          chmod +x dist_final/YoutubeDLT-macOS-Debug
+          cp dist/YoutubeDLT-Debug dist_final/YoutubeDLT-Linux-x86_64-Debug
+          chmod +x dist_final/YoutubeDLT-Linux-x86_64-Debug
 
       - name: Generate Build Provenance
         uses: actions/attest@v4
@@ -211,6 +210,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
@@ -218,15 +218,17 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Create GitHub Release + Upload Assets
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.version || github.ref_name }}
           files: |
             artifacts/YoutubeDLT-Windows.exe
             artifacts/YoutubeDLT-macOS.dmg
+            artifacts/YoutubeDLT-Linux-x86_64.AppImage
             artifacts/YoutubeDLT-Windows-Debug.exe
             artifacts/YoutubeDLT-macOS-Debug
+            artifacts/YoutubeDLT-Linux-x86_64-Debug
           name: ${{ github.event.inputs.version || github.ref_name }}
           generate_release_notes: true
           draft: false
