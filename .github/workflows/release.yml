@@ -97,7 +97,7 @@ jobs:
           mkdir -p dist_final
           Move-Item -Path dist/YoutubeDLT.exe -Destination dist_final/YoutubeDLT-Windows.exe -Force
 
-      - name: Build Windows Debug (With Console)
+      - name: Build Windows Debug
         if: runner.os == 'Windows' && inputs.build_debug == true
         shell: powershell
         run: |
@@ -179,7 +179,7 @@ jobs:
           cp dist/YoutubeDLT-Debug dist_final/YoutubeDLT-macOS-Debug
           chmod +x dist_final/YoutubeDLT-macOS-Debug
 
-      # ==================== Linux AppImage (已修复) ====================
+      # ==================== Linux AppImage (已完整修复) ====================
       - name: Build Linux AppImage
         if: runner.os == 'Linux'
         shell: bash
@@ -187,6 +187,7 @@ jobs:
           set -e
           echo "=== Building Linux AppImage ==="
 
+          # PyInstaller 打包
           pyinstaller \
             --noconfirm --clean --onefile --windowed \
             --name YoutubeDLT \
@@ -203,35 +204,44 @@ jobs:
             --add-binary "$(which ffprobe):." \
             --debug=all main.py
 
-          # Prepare AppDir
-          mkdir -p AppDir/usr/bin
+          # 创建标准 AppDir 结构
+          mkdir -p AppDir/usr/bin \
+                   AppDir/usr/share/applications \
+                   AppDir/usr/share/icons/hicolor/256x256/apps
+
+          # 复制可执行文件
           cp dist/YoutubeDLT AppDir/usr/bin/
           chmod +x AppDir/usr/bin/YoutubeDLT
 
-          # Create desktop file
+          # 创建 .desktop 文件
           cat > AppDir/YoutubeDLT.desktop << EOF
           [Desktop Entry]
           Name=YoutubeDLT
-          Exec=YoutubeDLT
+          Exec=usr/bin/YoutubeDLT
           Icon=YoutubeDLT
           Type=Application
           Categories=Utility;AudioVideo;Network;
           Terminal=false
-          Comment=YouTube Downloader GUI
+          Comment=YouTube Downloader with GUI
           EOF
 
-          # Copy icon (优先使用 YoutubeDLT.png)
+          # 复制 desktop 文件
+          cp AppDir/YoutubeDLT.desktop AppDir/usr/share/applications/YoutubeDLT.desktop
+
+          # 复制图标
           if [ -f "YoutubeDLT.png" ]; then
             cp YoutubeDLT.png AppDir/YoutubeDLT.png
-            echo "✓ Icon copied: YoutubeDLT.png"
+            cp YoutubeDLT.png AppDir/usr/share/icons/hicolor/256x256/apps/YoutubeDLT.png
+            echo "✓ Icon copied successfully"
           elif [ -f "app_icon.png" ]; then
             cp app_icon.png AppDir/YoutubeDLT.png
-            echo "✓ Icon copied: app_icon.png"
+            cp app_icon.png AppDir/usr/share/icons/hicolor/256x256/apps/YoutubeDLT.png
+            echo "✓ Icon copied from app_icon.png"
           else
             echo "⚠️ Warning: No icon found!"
           fi
 
-          # Build AppImage
+          # 打包 AppImage
           wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool-x86_64.AppImage
           ./appimagetool-x86_64.AppImage AppDir YoutubeDLT-Linux-x86_64.AppImage
@@ -239,6 +249,7 @@ jobs:
           mkdir -p dist_final
           mv YoutubeDLT-Linux-x86_64.AppImage dist_final/
           chmod +x dist_final/YoutubeDLT-Linux-x86_64.AppImage
+          echo "✅ Linux AppImage build completed"
 
       # ==================== Linux Debug ====================
       - name: Build Linux Debug
@@ -290,7 +301,7 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Create GitHub Release + Upload Assets
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.version || github.ref_name }}
