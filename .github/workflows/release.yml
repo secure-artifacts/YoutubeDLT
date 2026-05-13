@@ -67,11 +67,17 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ffmpeg
 
-      - name: Install ffmpeg (Linux)
+      - name: Download Static FFmpeg (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg fuse3
+          mkdir -p ffmpeg-static
+          cd ffmpeg-static
+          wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+          tar -xf ffmpeg-release-amd64-static.tar.xz
+          cd ffmpeg-*-static
+          echo "FFmpeg version: $(./ffmpeg -version | head -n1)"
+          pwd
 
       # ==================== Windows ====================
       - name: Build Windows Normal
@@ -91,33 +97,11 @@ jobs:
             --hidden-import certifi `
             --collect-all yt_dlp `
             --collect-all PyQt6 `
-            --add-binary "C:/ProgramData/chocolatey/bin/ffmpeg.exe;ffmpeg" `
-            --add-binary "C:/ProgramData/chocolatey/bin/ffprobe.exe;ffmpeg" `
+            --add-binary "C:/ProgramData/chocolatey/bin/ffmpeg.exe;." `
+            --add-binary "C:/ProgramData/chocolatey/bin/ffprobe.exe;." `
             --debug=all main.py
           mkdir -p dist_final
           Move-Item -Path dist/YoutubeDLT.exe -Destination dist_final/YoutubeDLT-Windows.exe -Force
-
-      - name: Build Windows Debug
-        if: runner.os == 'Windows' && inputs.build_debug == true
-        shell: powershell
-        run: |
-          python -m PyInstaller `
-            --noconfirm --clean --onefile --console `
-            --name YoutubeDLT-Debug `
-            --icon app_icon.ico `
-            --hidden-import yt_dlp `
-            --hidden-import PyQt6.QtWidgets `
-            --hidden-import PyQt6.QtCore `
-            --hidden-import PyQt6.QtGui `
-            --hidden-import PyQt6.QtNetwork `
-            --hidden-import PyQt6.sip `
-            --hidden-import certifi `
-            --collect-all yt_dlp `
-            --collect-all PyQt6 `
-            --add-binary "C:/ProgramData/chocolatey/bin/ffmpeg.exe;ffmpeg" `
-            --add-binary "C:/ProgramData/chocolatey/bin/ffprobe.exe;ffmpeg" `
-            --debug=all main.py
-          Move-Item -Path dist/YoutubeDLT-Debug.exe -Destination dist_final/YoutubeDLT-Windows-Debug.exe -Force
 
       # ==================== macOS ====================
       - name: Build macOS Normal
@@ -155,37 +139,15 @@ jobs:
             "dist_final/YoutubeDLT-macOS.dmg" \
             "dist_temp/"
 
-      - name: Build macOS Debug
-        if: runner.os == 'macOS' && inputs.build_debug == true
-        shell: bash
-        run: |
-          set -e
-          pyinstaller \
-            --noconfirm --clean --onefile --console \
-            --name YoutubeDLT-Debug \
-            --hidden-import yt_dlp \
-            --hidden-import PyQt6.QtWidgets \
-            --hidden-import PyQt6.QtCore \
-            --hidden-import PyQt6.QtGui \
-            --hidden-import PyQt6.QtNetwork \
-            --hidden-import PyQt6.sip \
-            --hidden-import certifi \
-            --collect-all yt_dlp \
-            --collect-all PyQt6 \
-            --target-arch arm64 \
-            --add-binary "$(which ffmpeg):." \
-            --debug=all main.py
-          mkdir -p dist_final
-          cp dist/YoutubeDLT-Debug dist_final/YoutubeDLT-macOS-Debug
-          chmod +x dist_final/YoutubeDLT-macOS-Debug
-
-      # ==================== Linux Single Binary (稳定版) ====================
-      - name: Build Linux Binary
+      # ==================== Linux Static FFmpeg Binary (最稳定) ====================
+      - name: Build Linux Binary with Static FFmpeg
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -e
-          echo "=== Building Linux Single Binary ==="
+          echo "=== Building Linux Single Binary with Static FFmpeg ==="
+
+          FFMPEG_DIR=$(find ffmpeg-static -type d -name "ffmpeg-*-static" | head -n1)
 
           pyinstaller \
             --noconfirm --clean --onefile --windowed \
@@ -199,33 +161,28 @@ jobs:
             --hidden-import certifi \
             --collect-all yt_dlp \
             --collect-all PyQt6 \
-            --add-binary "$(which ffmpeg):." \
-            --add-binary "$(which ffprobe):." \
+            --add-binary "$FFMPEG_DIR/ffmpeg:." \
+            --add-binary "$FFMPEG_DIR/ffprobe:." \
             --debug=all main.py
 
           mkdir -p dist_final
           
-          # 主程序
           cp dist/YoutubeDLT dist_final/YoutubeDLT-Linux-x86_64
           chmod +x dist_final/YoutubeDLT-Linux-x86_64
 
-          # 使用说明
           cat > dist_final/README-Linux.txt << EOF
           YoutubeDLT Linux 使用说明
 
-          1. 赋予执行权限（必须执行一次）：
+          1. 赋予执行权限：
              chmod +x YoutubeDLT-Linux-x86_64
 
-          2. 运行程序：
+          2. 直接运行：
              ./YoutubeDLT-Linux-x86_64
 
-          如提示缺少依赖，可执行：
-             sudo apt install ffmpeg libglib2.0-0 libgl1
-
-          Enjoy!
+          此版本已内置静态 ffmpeg，无需系统安装 ffmpeg。
           EOF
 
-          echo "✅ Linux Binary build completed successfully"
+          echo "✅ Linux Static FFmpeg build completed"
 
       - name: Generate Build Provenance
         uses: actions/attest@v4
@@ -247,3 +204,24 @@ jobs:
     steps:
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version || github.ref_name }}
+          files: |
+            artifacts/YoutubeDLT-Windows.exe
+            artifacts/YoutubeDLT-macOS.dmg
+            artifacts/YoutubeDLT-Linux-x86_64
+            artifacts/YoutubeDLT-Windows-Debug.exe
+            artifacts/YoutubeDLT-macOS-Debug
+            artifacts/YoutubeDLT-Linux-x86_64-Debug
+          name: ${{ github.event.inputs.version || github.ref_name }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          make_latest: true
+          overwrite: true
