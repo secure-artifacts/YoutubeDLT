@@ -26,7 +26,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-latest, macos-latest, ubuntu-22.04]
       max-parallel: 1
     permissions:
       id-token: write
@@ -58,25 +58,12 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      # ==================== Install ffmpeg ====================
+      # ==================== Windows ====================
       - name: Install ffmpeg (Windows)
         if: runner.os == 'Windows'
         run: choco install ffmpeg -y --no-progress
 
-      - name: Install ffmpeg (macOS)
-        if: runner.os == 'macOS'
-        run: brew install ffmpeg
-
-      - name: Download Static FFmpeg (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          mkdir -p ffmpeg-static
-          cd ffmpeg-static
-          wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
-          tar -xf ffmpeg-release-amd64-static.tar.xz
-
-      # ==================== Windows (恢复稳定版) ====================
-      - name: Build Windows Normal
+      - name: Build Windows Normal (No Console)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
@@ -93,13 +80,13 @@ jobs:
             --hidden-import certifi `
             --collect-all yt_dlp `
             --collect-all PyQt6 `
-            --add-binary "C:/ProgramData/chocolatey/bin/ffmpeg.exe;." `
-            --add-binary "C:/ProgramData/chocolatey/bin/ffprobe.exe;." `
+            --add-binary "C:/ProgramData/chocolatey/bin/ffmpeg.exe;ffmpeg" `
+            --add-binary "C:/ProgramData/chocolatey/bin/ffprobe.exe;ffmpeg" `
             --debug=all main.py
           mkdir -p dist_final
           Move-Item -Path dist/YoutubeDLT.exe -Destination dist_final/YoutubeDLT-Windows.exe -Force
 
-      - name: Build Windows Debug
+      - name: Build Windows Debug (With Console)
         if: runner.os == 'Windows' && inputs.build_debug == true
         shell: powershell
         run: |
@@ -116,19 +103,24 @@ jobs:
             --hidden-import certifi `
             --collect-all yt_dlp `
             --collect-all PyQt6 `
-            --add-binary "C:/ProgramData/chocolatey/bin/ffmpeg.exe;." `
-            --add-binary "C:/ProgramData/chocolatey/bin/ffprobe.exe;." `
+            --add-binary "C:/ProgramData/chocolatey/bin/ffmpeg.exe;ffmpeg" `
+            --add-binary "C:/ProgramData/chocolatey/bin/ffprobe.exe;ffmpeg" `
             --debug=all main.py
-          mkdir -p dist_final
           Move-Item -Path dist/YoutubeDLT-Debug.exe -Destination dist_final/YoutubeDLT-Windows-Debug.exe -Force
 
       # ==================== macOS ====================
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+
       - name: Build macOS Normal
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -e
-          pyinstaller --noconfirm --clean --onefile --windowed \
+          echo "=== Building macOS Normal (arm64) ==="
+          pyinstaller \
+            --noconfirm --clean --onefile --windowed \
             --name YoutubeDLT \
             --hidden-import yt_dlp \
             --hidden-import PyQt6.QtWidgets \
@@ -140,29 +132,78 @@ jobs:
             --collect-all yt_dlp \
             --collect-all PyQt6 \
             --target-arch arm64 \
-            --add-binary "$(which ffmpeg):." main.py
+            --add-binary "$(which ffmpeg):." \
+            --debug=all main.py
 
+          echo "=== Creating Normal DMG ==="
           brew install create-dmg
           mkdir -p dist_final dist_temp
           cp -R dist/YoutubeDLT.app dist_temp/
-          create-dmg --volname "YoutubeDLT" --window-pos 200 120 --window-size 600 400 --icon-size 100 \
-            --hide-extension "YoutubeDLT.app" --app-drop-link 425 120 --no-internet-enable \
-            "dist_final/YoutubeDLT-macOS.dmg" "dist_temp/"
+          create-dmg \
+            --volname "YoutubeDLT" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --hide-extension "YoutubeDLT.app" \
+            --app-drop-link 425 120 \
+            --no-internet-enable \
+            "dist_final/YoutubeDLT-macOS.dmg" \
+            "dist_temp/"
 
-      # ==================== Linux Onedir (稳定解决 Qt xcb) ====================
-      - name: Build Linux (onedir)
+      - name: Build macOS Debug
+        if: runner.os == 'macOS' && inputs.build_debug == true
+        shell: bash
+        run: |
+          set -e
+          pyinstaller \
+            --noconfirm --clean --onefile --console \
+            --name YoutubeDLT-Debug \
+            --hidden-import yt_dlp \
+            --hidden-import PyQt6.QtWidgets \
+            --hidden-import PyQt6.QtCore \
+            --hidden-import PyQt6.QtGui \
+            --hidden-import PyQt6.QtNetwork \
+            --hidden-import PyQt6.sip \
+            --hidden-import certifi \
+            --collect-all yt_dlp \
+            --collect-all PyQt6 \
+            --target-arch arm64 \
+            --add-binary "$(which ffmpeg):." \
+            --debug=all main.py
+          mkdir -p dist_final
+          cp dist/YoutubeDLT-Debug dist_final/YoutubeDLT-macOS-Debug
+          chmod +x dist_final/YoutubeDLT-macOS-Debug
+
+      # ==================== Linux ====================
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libglib2.0-0 libsm6 libxext6 libxrender-dev libfontconfig1 \
+            libxkbcommon-x11-0 libdbus-1-3 libxcb-cursor0 \
+            ffmpeg patchelf
+
+      - name: Download static ffmpeg (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p ffmpeg-static
+          cd ffmpeg-static
+          wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+          tar -xf ffmpeg-release-amd64-static.tar.xz
+          mv ffmpeg-*-static/ffmpeg .
+          mv ffmpeg-*-static/ffprobe .
+          chmod +x ffmpeg ffprobe
+
+      - name: Build Linux Normal
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -e
-          echo "=== Building Linux Onedir ==="
-
-          FFMPEG_DIR=$(find ffmpeg-static -type d -name "ffmpeg-*-static" | head -n1)
-          PYQT6_PLUGINS=$(python -c "import PyQt6.QtCore; import os; print(os.path.dirname(PyQt6.QtCore.__file__) + '/../../Qt6/plugins')")
+          echo "=== Building Linux Normal ==="
 
           pyinstaller \
-            --noconfirm --clean \
-            --onedir --windowed \
+            --noconfirm --clean --onefile --windowed \
             --name YoutubeDLT \
             --hidden-import yt_dlp \
             --hidden-import PyQt6.QtWidgets \
@@ -173,29 +214,41 @@ jobs:
             --hidden-import certifi \
             --collect-all yt_dlp \
             --collect-all PyQt6 \
-            --collect-all Qt6 \
-            --add-binary "$FFMPEG_DIR/ffmpeg:." \
-            --add-binary "$FFMPEG_DIR/ffprobe:." \
-            --add-data "$PYQT6_PLUGINS/platforms:PyQt6/Qt6/plugins/platforms" \
-            --add-data "$PYQT6_PLUGINS/xcbglintegrations:PyQt6/Qt6/plugins/xcbglintegrations" main.py
+            --add-binary "ffmpeg-static/ffmpeg:." \
+            --add-binary "ffmpeg-static/ffprobe:." \
+            --debug=all main.py
 
           mkdir -p dist_final
           cd dist
-          tar -czf YoutubeDLT-Linux-x86_64.tar.gz YoutubeDLT
-          mv YoutubeDLT-Linux-x86_64.tar.gz ../dist_final/
+          zip -r ../dist_final/YoutubeDLT-Linux.zip YoutubeDLT
+          cd ..
 
-          cat > ../dist_final/README-Linux.txt << EOF
-          【YoutubeDLT Linux 使用说明】
+      - name: Build Linux Debug
+        if: runner.os == 'Linux' && inputs.build_debug == true
+        shell: bash
+        run: |
+          set -e
+          pyinstaller \
+            --noconfirm --clean --onefile --console \
+            --name YoutubeDLT-Debug \
+            --hidden-import yt_dlp \
+            --hidden-import PyQt6.QtWidgets \
+            --hidden-import PyQt6.QtCore \
+            --hidden-import PyQt6.QtGui \
+            --hidden-import PyQt6.QtNetwork \
+            --hidden-import PyQt6.sip \
+            --hidden-import certifi \
+            --collect-all yt_dlp \
+            --collect-all PyQt6 \
+            --add-binary "ffmpeg-static/ffmpeg:." \
+            --add-binary "ffmpeg-static/ffprobe:." \
+            --debug=all main.py
 
-          1. 解压：
-             tar -xzf YoutubeDLT-Linux-x86_64.tar.gz
+          mkdir -p dist_final
+          cp dist/YoutubeDLT-Debug dist_final/YoutubeDLT-Linux-Debug
+          chmod +x dist_final/YoutubeDLT-Linux-Debug
 
-          2. 运行：
-             cd YoutubeDLT
-             chmod +x YoutubeDLT
-             ./YoutubeDLT
-          EOF
-
+      # ==================== 通用步骤 ====================
       - name: Generate Build Provenance
         uses: actions/attest@v4
         with:
@@ -213,6 +266,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
@@ -220,14 +274,17 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release + Upload Assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.version || github.ref_name }}
           files: |
             artifacts/YoutubeDLT-Windows.exe
             artifacts/YoutubeDLT-macOS.dmg
-            artifacts/YoutubeDLT-Linux-x86_64.tar.gz
+            artifacts/YoutubeDLT-Linux.zip
+            artifacts/YoutubeDLT-Windows-Debug.exe
+            artifacts/YoutubeDLT-macOS-Debug
+            artifacts/YoutubeDLT-Linux-Debug
           name: ${{ github.event.inputs.version || github.ref_name }}
           generate_release_notes: true
           draft: false
