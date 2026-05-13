@@ -74,7 +74,7 @@ jobs:
           sudo apt-get install -y ffmpeg fuse3
 
       # ==================== Windows ====================
-      - name: Build Windows Normal (No Console)
+      - name: Build Windows Normal
         if: runner.os == 'Windows'
         shell: powershell
         run: |
@@ -179,15 +179,14 @@ jobs:
           cp dist/YoutubeDLT-Debug dist_final/YoutubeDLT-macOS-Debug
           chmod +x dist_final/YoutubeDLT-macOS-Debug
 
-      # ==================== Linux AppImage (已完整修复) ====================
-      - name: Build Linux AppImage
+      # ==================== Linux Single Binary (稳定版) ====================
+      - name: Build Linux Binary
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -e
-          echo "=== Building Linux AppImage ==="
+          echo "=== Building Linux Single Binary ==="
 
-          # PyInstaller 打包
           pyinstaller \
             --noconfirm --clean --onefile --windowed \
             --name YoutubeDLT \
@@ -204,78 +203,29 @@ jobs:
             --add-binary "$(which ffprobe):." \
             --debug=all main.py
 
-          # 创建标准 AppDir 结构
-          mkdir -p AppDir/usr/bin \
-                   AppDir/usr/share/applications \
-                   AppDir/usr/share/icons/hicolor/256x256/apps
+          mkdir -p dist_final
+          
+          # 主程序
+          cp dist/YoutubeDLT dist_final/YoutubeDLT-Linux-x86_64
+          chmod +x dist_final/YoutubeDLT-Linux-x86_64
 
-          # 复制可执行文件
-          cp dist/YoutubeDLT AppDir/usr/bin/
-          chmod +x AppDir/usr/bin/YoutubeDLT
+          # 使用说明
+          cat > dist_final/README-Linux.txt << EOF
+          YoutubeDLT Linux 使用说明
 
-          # 创建 .desktop 文件
-          cat > AppDir/YoutubeDLT.desktop << EOF
-          [Desktop Entry]
-          Name=YoutubeDLT
-          Exec=usr/bin/YoutubeDLT
-          Icon=YoutubeDLT
-          Type=Application
-          Categories=Utility;AudioVideo;Network;
-          Terminal=false
-          Comment=YouTube Downloader with GUI
+          1. 赋予执行权限（必须执行一次）：
+             chmod +x YoutubeDLT-Linux-x86_64
+
+          2. 运行程序：
+             ./YoutubeDLT-Linux-x86_64
+
+          如提示缺少依赖，可执行：
+             sudo apt install ffmpeg libglib2.0-0 libgl1
+
+          Enjoy!
           EOF
 
-          # 复制 desktop 文件
-          cp AppDir/YoutubeDLT.desktop AppDir/usr/share/applications/YoutubeDLT.desktop
-
-          # 复制图标
-          if [ -f "YoutubeDLT.png" ]; then
-            cp YoutubeDLT.png AppDir/YoutubeDLT.png
-            cp YoutubeDLT.png AppDir/usr/share/icons/hicolor/256x256/apps/YoutubeDLT.png
-            echo "✓ Icon copied successfully"
-          elif [ -f "app_icon.png" ]; then
-            cp app_icon.png AppDir/YoutubeDLT.png
-            cp app_icon.png AppDir/usr/share/icons/hicolor/256x256/apps/YoutubeDLT.png
-            echo "✓ Icon copied from app_icon.png"
-          else
-            echo "⚠️ Warning: No icon found!"
-          fi
-
-          # 打包 AppImage
-          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x appimagetool-x86_64.AppImage
-          ./appimagetool-x86_64.AppImage AppDir YoutubeDLT-Linux-x86_64.AppImage
-
-          mkdir -p dist_final
-          mv YoutubeDLT-Linux-x86_64.AppImage dist_final/
-          chmod +x dist_final/YoutubeDLT-Linux-x86_64.AppImage
-          echo "✅ Linux AppImage build completed"
-
-      # ==================== Linux Debug ====================
-      - name: Build Linux Debug
-        if: runner.os == 'Linux' && inputs.build_debug == true
-        shell: bash
-        run: |
-          set -e
-          pyinstaller \
-            --noconfirm --clean --onefile --console \
-            --name YoutubeDLT-Debug \
-            --hidden-import yt_dlp \
-            --hidden-import PyQt6.QtWidgets \
-            --hidden-import PyQt6.QtCore \
-            --hidden-import PyQt6.QtGui \
-            --hidden-import PyQt6.QtNetwork \
-            --hidden-import PyQt6.sip \
-            --hidden-import certifi \
-            --collect-all yt_dlp \
-            --collect-all PyQt6 \
-            --add-binary "$(which ffmpeg):." \
-            --add-binary "$(which ffprobe):." \
-            --debug=all main.py
-
-          mkdir -p dist_final
-          cp dist/YoutubeDLT-Debug dist_final/YoutubeDLT-Linux-x86_64-Debug
-          chmod +x dist_final/YoutubeDLT-Linux-x86_64-Debug
+          echo "✅ Linux Binary build completed successfully"
 
       - name: Generate Build Provenance
         uses: actions/attest@v4
@@ -297,24 +247,3 @@ jobs:
     steps:
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event.inputs.version || github.ref_name }}
-          files: |
-            artifacts/YoutubeDLT-Windows.exe
-            artifacts/YoutubeDLT-macOS.dmg
-            artifacts/YoutubeDLT-Linux-x86_64.AppImage
-            artifacts/YoutubeDLT-Windows-Debug.exe
-            artifacts/YoutubeDLT-macOS-Debug
-            artifacts/YoutubeDLT-Linux-x86_64-Debug
-          name: ${{ github.event.inputs.version || github.ref_name }}
-          generate_release_notes: true
-          draft: false
-          prerelease: false
-          make_latest: true
-          overwrite: true
