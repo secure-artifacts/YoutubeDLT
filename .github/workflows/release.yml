@@ -70,14 +70,10 @@ jobs:
       - name: Download Static FFmpeg (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
           mkdir -p ffmpeg-static
           cd ffmpeg-static
           wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
           tar -xf ffmpeg-release-amd64-static.tar.xz
-          cd ffmpeg-*-static
-          echo "FFmpeg version: $(./ffmpeg -version | head -n1)"
-          pwd
 
       # ==================== Windows ====================
       - name: Build Windows Normal
@@ -102,6 +98,29 @@ jobs:
             --debug=all main.py
           mkdir -p dist_final
           Move-Item -Path dist/YoutubeDLT.exe -Destination dist_final/YoutubeDLT-Windows.exe -Force
+
+      - name: Build Windows Debug
+        if: runner.os == 'Windows' && inputs.build_debug == true
+        shell: powershell
+        run: |
+          python -m PyInstaller `
+            --noconfirm --clean --onefile --console `
+            --name YoutubeDLT-Debug `
+            --icon app_icon.ico `
+            --hidden-import yt_dlp `
+            --hidden-import PyQt6.QtWidgets `
+            --hidden-import PyQt6.QtCore `
+            --hidden-import PyQt6.QtGui `
+            --hidden-import PyQt6.QtNetwork `
+            --hidden-import PyQt6.sip `
+            --hidden-import certifi `
+            --collect-all yt_dlp `
+            --collect-all PyQt6 `
+            --add-binary "C:/ProgramData/chocolatey/bin/ffmpeg.exe;." `
+            --add-binary "C:/ProgramData/chocolatey/bin/ffprobe.exe;." `
+            --debug=all main.py
+          mkdir -p dist_final
+          Move-Item -Path dist/YoutubeDLT-Debug.exe -Destination dist_final/YoutubeDLT-Windows-Debug.exe -Force
 
       # ==================== macOS ====================
       - name: Build macOS Normal
@@ -139,14 +158,39 @@ jobs:
             "dist_final/YoutubeDLT-macOS.dmg" \
             "dist_temp/"
 
-      # ==================== Linux Static FFmpeg Binary (最稳定) ====================
-      - name: Build Linux Binary with Static FFmpeg
+      - name: Build macOS Debug
+        if: runner.os == 'macOS' && inputs.build_debug == true
+        shell: bash
+        run: |
+          set -e
+          pyinstaller \
+            --noconfirm --clean --onefile --console \
+            --name YoutubeDLT-Debug \
+            --hidden-import yt_dlp \
+            --hidden-import PyQt6.QtWidgets \
+            --hidden-import PyQt6.QtCore \
+            --hidden-import PyQt6.QtGui \
+            --hidden-import PyQt6.QtNetwork \
+            --hidden-import PyQt6.sip \
+            --hidden-import certifi \
+            --collect-all yt_dlp \
+            --collect-all PyQt6 \
+            --target-arch arm64 \
+            --add-binary "$(which ffmpeg):." \
+            --debug=all main.py
+          mkdir -p dist_final
+          cp dist/YoutubeDLT-Debug dist_final/YoutubeDLT-macOS-Debug
+          chmod +x dist_final/YoutubeDLT-macOS-Debug
+
+      # ==================== Linux (Qt xcb 修复 + 静态 ffmpeg) ====================
+      - name: Build Linux Binary
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -e
-          echo "=== Building Linux Single Binary with Static FFmpeg ==="
+          echo "=== Building Linux Single Binary (Qt Fixed + Static FFmpeg) ==="
 
+          # 静态 ffmpeg
           FFMPEG_DIR=$(find ffmpeg-static -type d -name "ffmpeg-*-static" | head -n1)
 
           pyinstaller \
@@ -161,8 +205,11 @@ jobs:
             --hidden-import certifi \
             --collect-all yt_dlp \
             --collect-all PyQt6 \
+            --collect-all Qt6 \
+            --collect-submodules PyQt6 \
             --add-binary "$FFMPEG_DIR/ffmpeg:." \
             --add-binary "$FFMPEG_DIR/ffprobe:." \
+            --add-data "/usr/lib/x86_64-linux-gnu/libxcb*.so*:." \
             --debug=all main.py
 
           mkdir -p dist_final
@@ -179,10 +226,14 @@ jobs:
           2. 直接运行：
              ./YoutubeDLT-Linux-x86_64
 
-          此版本已内置静态 ffmpeg，无需系统安装 ffmpeg。
+          如仍无法启动界面，请执行以下命令安装系统依赖：
+             sudo apt update
+             sudo apt install -y libxcb-cursor0 libxcb-xfixes0 libxkbcommon-x11-0 libegl1 libfontconfig1 libdbus-1-3 libx11-xcb1 libxrender1 libxi6 libxcb1
+
+          Enjoy!
           EOF
 
-          echo "✅ Linux Static FFmpeg build completed"
+          echo "✅ Linux build completed with Qt plugin fix"
 
       - name: Generate Build Provenance
         uses: actions/attest@v4
