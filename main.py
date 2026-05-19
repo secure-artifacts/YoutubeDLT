@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-YouTube 下载工具（基于 PyQt6 + yt-dlp）
-"""
-
+""" YouTube 下载工具（基于 PyQt6 + yt-dlp） """
 import sys
 import os
 import json
@@ -14,7 +11,7 @@ import webbrowser
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QTextEdit, QPushButton, QMessageBox,
-    QComboBox, QFileDialog, QCheckBox
+    QComboBox, QFileDialog, QCheckBox, QLineEdit
 )
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer, QEvent, Qt
 from PyQt6.QtGui import QIcon, QCursor
@@ -30,18 +27,14 @@ except ImportError:
 CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".youtube_downloader")
 os.makedirs(CONFIG_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
-
 GITHUB_API_URL = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest"
 GITHUB_RELEASES_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest"
-
 APP_GITHUB_REPO = "https://github.com/secure-artifacts/YoutubeDLT"
 APP_RELEASES_URL = f"{APP_GITHUB_REPO}/releases/latest"
 APP_GITHUB_API_URL = f"https://api.github.com/repos/secure-artifacts/YoutubeDLT/releases/latest"
-
-APP_CURRENT_VERSION = "2.0.26"
+APP_CURRENT_VERSION = "2.0.27"
 
 LOCK_FILE = os.path.join(CONFIG_DIR, "app.lock")
-
 
 def is_already_running():
     if os.path.exists(LOCK_FILE):
@@ -53,13 +46,11 @@ def is_already_running():
             return True
     return False
 
-
 def create_lock_file():
     try:
         open(LOCK_FILE, 'w').close()
     except:
         pass
-
 
 def remove_lock_file():
     try:
@@ -68,13 +59,11 @@ def remove_lock_file():
     except:
         pass
 
-
 if is_already_running():
     print("程序已经在运行中！")
     sys.exit(0)
 
 create_lock_file()
-
 
 def get_default_downloads():
     home = os.path.expanduser("~")
@@ -102,11 +91,15 @@ class ConfigManager:
                     return (
                         data.get('download_path', get_default_downloads()),
                         data.get('last_quality', "最高质量（推荐）"),
-                        data.get('cookie_file', '')
+                        data.get('cookie_file', ''),
+                        data.get('use_proxy', False),
+                        data.get('proxy_ip', '127.0.0.1'),
+                        data.get('proxy_port', '7890'),
+                        data.get('proxy_type', 'http')
                     )
             except:
                 pass
-        return get_default_downloads(), "最高质量（推荐）", ""
+        return get_default_downloads(), "最高质量（推荐）", "", False, "127.0.0.1", "7890", "http"
 
     @staticmethod
     def save(key, value):
@@ -136,6 +129,13 @@ class ConfigManager:
     def save_cookie_file(path):
         ConfigManager.save('cookie_file', path)
 
+    @staticmethod
+    def save_proxy_settings(use_proxy, proxy_ip, proxy_port, proxy_type):
+        ConfigManager.save('use_proxy', use_proxy)
+        ConfigManager.save('proxy_ip', proxy_ip)
+        ConfigManager.save('proxy_port', proxy_port)
+        ConfigManager.save('proxy_type', proxy_type)
+
 
 class VersionChecker:
     @staticmethod
@@ -155,13 +155,15 @@ class DownloadWorker(QThread):
     current_file = pyqtSignal(str)
     finished = pyqtSignal(bool, str)
 
-    def __init__(self, url, save_dir, quality_mode, download_playlist=False, cookie_file=None):
+    def __init__(self, url, save_dir, quality_mode, download_playlist=False,
+                 cookie_file=None, proxy=None):
         super().__init__()
         self.url = url
         self.save_dir = save_dir
         self.quality_mode = quality_mode
         self.download_playlist = download_playlist
         self.cookie_file = cookie_file
+        self.proxy = proxy
         self._stop_requested = False
 
     def request_stop(self):
@@ -186,10 +188,9 @@ class DownloadWorker(QThread):
             if 'filename' in d:
                 self.current_file.emit(os.path.basename(d['filename']))
 
-        # ================== 格式设置 ==================
+        # 格式设置
         format_str = "bestvideo*+bestaudio/best"
         q = self.quality_mode
-
         if q == "1080p（或更低）":
             format_str = "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best"
         elif q == "720p（或更低）":
@@ -201,27 +202,6 @@ class DownloadWorker(QThread):
         elif q == "仅音频（MP3 192kbps）":
             format_str = "bestaudio/best"
 
-        # ================== 智能查找 ffmpeg（支持打包和系统安装） ==================
-        import shutil
-        import sys
-
-        ffmpeg_path = shutil.which('ffmpeg')
-
-        # 如果是打包后的程序（onefile），尝试从临时目录查找打包的 ffmpeg
-        if not ffmpeg_path and getattr(sys, 'frozen', False):
-            base_path = sys._MEIPASS
-            if sys.platform == "win32":
-                candidate = os.path.join(base_path, "ffmpeg", "ffmpeg.exe")
-            else:  # macOS
-                candidate = os.path.join(base_path, "ffmpeg")
-            if os.path.exists(candidate):
-                ffmpeg_path = candidate
-                # 把 ffmpeg 目录加入 PATH，让 yt-dlp 能找到
-                os.environ["PATH"] = os.path.dirname(ffmpeg_path) + os.pathsep + os.environ.get("PATH", "")
-
-        has_ffmpeg = bool(ffmpeg_path)
-
-        # ================== 设置 yt-dlp 参数 ==================
         opts = {
             'outtmpl': os.path.join(self.save_dir, '%(title)s.%(ext)s'),
             'format': format_str,
@@ -234,36 +214,50 @@ class DownloadWorker(QThread):
             'noplaylist': not self.download_playlist,
         }
 
+        if self.proxy:
+            opts['proxy'] = self.proxy
+            self.log.emit(f"[代理] 使用代理：{self.proxy}")
+
+        # ffmpeg 处理
+        import shutil
+        ffmpeg_path = shutil.which('ffmpeg')
+        if not ffmpeg_path and getattr(sys, 'frozen', False):
+            base_path = sys._MEIPASS
+            if sys.platform == "win32":
+                candidate = os.path.join(base_path, "ffmpeg", "ffmpeg.exe")
+            else:
+                candidate = os.path.join(base_path, "ffmpeg")
+            if os.path.exists(candidate):
+                ffmpeg_path = candidate
+                os.environ["PATH"] = os.path.dirname(ffmpeg_path) + os.pathsep + os.environ.get("PATH", "")
+
+        has_ffmpeg = bool(ffmpeg_path)
+
         if not has_ffmpeg:
-            # 没有 ffmpeg 时自动切换为不合并模式
             self.log.emit("[警告] 未检测到 ffmpeg，已自动切换为不合并模式")
-            self.log.emit("       （视频和音频会分开保存，但仍可正常播放）")
+            self.log.emit(" （视频和音频会分开保存，但仍可正常播放）")
             opts['merge_output_format'] = None
-            
             if q == "仅音频（MP3 192kbps）":
-                opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 
-                                         'preferredcodec': 'mp3', 
+                opts['postprocessors'] = [{'key': 'FFmpegExtractAudio',
+                                         'preferredcodec': 'mp3',
                                          'preferredquality': '192'}]
         else:
-            # 有 ffmpeg 时正常合并
             if q != "仅音频（MP3 192kbps）":
                 opts['merge_output_format'] = 'mp4'
             else:
-                opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 
-                                         'preferredcodec': 'mp3', 
+                opts['postprocessors'] = [{'key': 'FFmpegExtractAudio',
+                                         'preferredcodec': 'mp3',
                                          'preferredquality': '192'}]
 
-        # Cookie 支持
         if self.cookie_file and os.path.exists(self.cookie_file):
             opts['cookiefile'] = self.cookie_file
             self.log.emit(f"[Cookie] 使用 Cookie 文件：{os.path.basename(self.cookie_file)}")
 
-        # ================== 执行下载 ==================
         try:
             os.makedirs(self.save_dir, exist_ok=True)
             self.status.emit("下载中...")
             self.log.emit("[开始] 正在提取信息并准备下载...")
-            
+
             with YoutubeDL(opts) as ydl:
                 ydl.download([self.url])
 
@@ -283,13 +277,15 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("YouTube 下载工具")
-        self.setFixedSize(780, 540)
-
+        self.setFixedSize(800, 580)
+        
         icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_icon.ico")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
 
-        self.download_path, last_quality, self.cookie_file = ConfigManager.load()
+        (self.download_path, last_quality, self.cookie_file,
+         self.use_proxy, self.proxy_ip, self.proxy_port, self.proxy_type) = ConfigManager.load()
+
         self.worker = None
         self.pending_urls = []
         self.total_count = 0
@@ -298,16 +294,22 @@ class MainWindow(QWidget):
 
         self.init_ui()
 
+        # 恢复设置
         index = self.combo_quality.findText(last_quality)
         if index >= 0:
             self.combo_quality.setCurrentIndex(index)
+
+        self.cb_proxy.setChecked(self.use_proxy)
+        self.proxy_ip_edit.setText(self.proxy_ip)
+        self.proxy_port_edit.setText(self.proxy_port)
+        self.proxy_type_combo.setCurrentText(self.proxy_type)
+        self.on_proxy_check_changed()
 
         if self.cookie_file and os.path.exists(self.cookie_file):
             self.cb_cookie.setChecked(True)
             self.lbl_cookie_file.setText(f"已加载：{os.path.basename(self.cookie_file)}")
 
         self.combo_quality.currentTextChanged.connect(ConfigManager.save_quality)
-
         QTimer.singleShot(1500, self.check_app_update)
         self.check_latest_version()
 
@@ -326,11 +328,9 @@ class MainWindow(QWidget):
         self.lbl_path = QLabel(self.download_path)
         self.lbl_path.setStyleSheet("font-weight:bold; color:#0066cc;")
         path_layout.addWidget(self.lbl_path, 1)
-
         btn_choose = QPushButton("更改文件夹")
         btn_choose.clicked.connect(self.choose_path)
         path_layout.addWidget(btn_choose)
-
         btn_open = QPushButton("打开文件夹")
         btn_open.setStyleSheet("background-color: #4CAF50; color: white;")
         btn_open.clicked.connect(self.open_folder)
@@ -344,17 +344,14 @@ class MainWindow(QWidget):
         lbl_yt.setStyleSheet("font-weight:bold;")
         version_layout.addWidget(lbl_yt)
         version_layout.addStretch(1)
-
         version_layout.addWidget(QLabel("程序版本："))
         self.lbl_app_version = QLabel(self.current_version)
         self.lbl_app_version.setStyleSheet("font-weight:bold;")
         version_layout.addWidget(self.lbl_app_version)
-
         self.btn_check_update = QPushButton("检查更新")
         self.btn_check_update.clicked.connect(self.check_app_update)
         version_layout.addWidget(self.btn_check_update)
         version_layout.addStretch(1)
-
         version_layout.addWidget(QLabel("最新 yt-dlp："))
         self.lbl_latest = QLabel("检查中...")
         self.lbl_latest.setStyleSheet("font-weight:bold; color:#0066cc;")
@@ -363,15 +360,39 @@ class MainWindow(QWidget):
         version_layout.addWidget(self.lbl_latest)
         layout.addLayout(version_layout)
 
+        # 代理设置
+        proxy_layout = QHBoxLayout()
+        self.cb_proxy = QCheckBox("使用代理")
+        self.cb_proxy.stateChanged.connect(self.on_proxy_check_changed)
+        proxy_layout.addWidget(self.cb_proxy)
+
+        proxy_layout.addWidget(QLabel("类型："))
+        self.proxy_type_combo = QComboBox()
+        self.proxy_type_combo.addItems(["http", "socks5", "socks4"])
+        proxy_layout.addWidget(self.proxy_type_combo)
+
+        proxy_layout.addWidget(QLabel("IP："))
+        self.proxy_ip_edit = QLineEdit()
+        self.proxy_ip_edit.setMaximumWidth(140)
+        proxy_layout.addWidget(self.proxy_ip_edit)
+
+        proxy_layout.addWidget(QLabel("端口："))
+        self.proxy_port_edit = QLineEdit()
+        self.proxy_port_edit.setMaximumWidth(80)
+        proxy_layout.addWidget(self.proxy_port_edit)
+
+        self.btn_proxy_confirm = QPushButton("确认")
+        self.btn_proxy_confirm.clicked.connect(self.save_proxy_settings)
+        proxy_layout.addWidget(self.btn_proxy_confirm)
+        layout.addLayout(proxy_layout)
+
         # Cookie
         cookie_layout = QHBoxLayout()
-        self.cb_cookie = QCheckBox("使用 Cookie 登录下载（推荐用于下载会员视频、私有视频等）")
+        self.cb_cookie = QCheckBox("使用 Cookie 登录下载（推荐用于会员/私有视频）")
         cookie_layout.addWidget(self.cb_cookie)
-
         self.btn_import_cookie = QPushButton("导入 Cookie 文件")
         self.btn_import_cookie.clicked.connect(self.import_cookie)
         cookie_layout.addWidget(self.btn_import_cookie)
-
         self.lbl_cookie_file = QLabel("未加载 Cookie")
         self.lbl_cookie_file.setStyleSheet("color: #666;")
         cookie_layout.addWidget(self.lbl_cookie_file, 1)
@@ -434,6 +455,174 @@ class MainWindow(QWidget):
 
         self.setLayout(layout)
 
+    def on_proxy_check_changed(self):
+        enabled = self.cb_proxy.isChecked()
+        self.proxy_ip_edit.setEnabled(enabled)
+        self.proxy_port_edit.setEnabled(enabled)
+        self.proxy_type_combo.setEnabled(enabled)
+        self.btn_proxy_confirm.setEnabled(enabled)
+
+    def save_proxy_settings(self):
+        use_proxy = self.cb_proxy.isChecked()
+        ip = self.proxy_ip_edit.text().strip()
+        port = self.proxy_port_edit.text().strip()
+        ptype = self.proxy_type_combo.currentText()
+
+        if use_proxy and (not ip or not port):
+            QMessageBox.warning(self, "提示", "启用代理时必须填写 IP 和端口")
+            return
+
+        ConfigManager.save_proxy_settings(use_proxy, ip, port, ptype)
+        QMessageBox.information(self, "成功", "代理设置已保存")
+        self.append_log(f"代理设置已更新：{ptype}://{ip}:{port}")
+
+    def get_proxy(self):
+        if not self.cb_proxy.isChecked():
+            return None
+        ip = self.proxy_ip_edit.text().strip()
+        port = self.proxy_port_edit.text().strip()
+        ptype = self.proxy_type_combo.currentText()
+        if ip and port:
+            return f"{ptype}://{ip}:{port}"
+        return None
+
+    def toggle_main(self):
+        raw_text = self.edit_url.toPlainText().strip()
+        if not raw_text:
+            QMessageBox.warning(self, "提示", "请至少输入一个链接")
+            return
+
+        urls = [line.strip() for line in raw_text.splitlines() if line.strip().startswith(('http://', 'https://'))]
+        if not urls:
+            QMessageBox.warning(self, "提示", "没有找到有效的 YouTube 链接")
+            return
+
+        is_channel = any(x in urls[0].lower() for x in ['/channel/', '/@', '/c/', '/user/'])
+        if is_channel and self.cb_playlist.isChecked() and len(urls) == 1:
+            reply = QMessageBox.question(
+                self, "频道批量下载警告",
+                "检测到频道链接 + 已勾选“下载整个播放列表”，这将下载该频道所有视频（可能数量巨大），确定继续吗？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
+
+        quality = self.combo_quality.currentText()
+        playlist = self.cb_playlist.isChecked()
+        cookie_file = self.cookie_file if self.cb_cookie.isChecked() else None
+        proxy = self.get_proxy()
+
+        if self.worker and self.worker.isRunning():
+            self.worker.request_stop()
+            self.btn_main.setText("继续下载")
+            self.append_log("已请求暂停当前任务...")
+            return
+
+        if self.pending_urls or self.total_count == 0:
+            self.pending_urls = urls[1:] if len(urls) > 1 else []
+            self.total_count = len(urls)
+            self.finished_count = 0
+
+        self.start_next_download(urls[0], quality, playlist, cookie_file, proxy)
+
+    def start_next_download(self, url, quality, playlist, cookie_file, proxy):
+        self.worker = DownloadWorker(url, self.download_path, quality, playlist, cookie_file, proxy)
+        self.worker.log.connect(self.append_log)
+        self.worker.status.connect(self.lbl_status.setText)
+        self.worker.current_file.connect(lambda f: self.lbl_file.setText(f"当前文件：{f}"))
+        self.worker.finished.connect(self.on_one_finished)
+
+        self.append_log(f"───── 开始 ({self.finished_count + 1}/{self.total_count}) ─────")
+        self.append_log(f"链接：{url}")
+        self.lbl_progress.setText(f"进度：{self.finished_count + 1} / {self.total_count}")
+        self.worker.start()
+        self.btn_main.setText("暂停当前")
+        self.btn_cancel.setEnabled(True)
+        self.lbl_status.setText(f"正在下载 ({self.finished_count + 1}/{self.total_count})")
+
+    def on_one_finished(self, success, msg):
+        self.append_log(f"───── {msg} ─────")
+        self.finished_count += 1
+        self.lbl_progress.setText(f"进度：{self.finished_count} / {self.total_count}")
+
+        if self.finished_count >= self.total_count:
+            self.append_log("所有任务处理完毕")
+            self.lbl_status.setText("全部完成")
+            if success:
+                QMessageBox.information(self, "完成", f"已处理 {self.total_count} 个任务")
+            self.reset_ui()
+            self.pending_urls = []
+        else:
+            if self.pending_urls:
+                next_url = self.pending_urls.pop(0)
+                quality = self.combo_quality.currentText()
+                playlist = self.cb_playlist.isChecked()
+                cookie_file = self.cookie_file if self.cb_cookie.isChecked() else None
+                proxy = self.get_proxy()
+                self.start_next_download(next_url, quality, playlist, cookie_file, proxy)
+            else:
+                self.reset_ui()
+
+    def cancel_all(self):
+        if self.worker and self.worker.isRunning():
+            self.worker.request_stop()
+            self.worker.wait(3000)
+        self.pending_urls = []
+        self.reset_ui()
+        self.append_log("全部任务已取消")
+
+    def reset_ui(self):
+        self.btn_main.setText("开始下载")
+        self.btn_cancel.setEnabled(False)
+        self.lbl_status.setText("就绪")
+        self.lbl_progress.setText("进度： - / - ")
+        self.lbl_file.setText("当前文件： - ")
+
+    def append_log(self, text):
+        ts = datetime.datetime.now().strftime("%H:%M:%S")
+        self.log_area.append(f"[{ts}] {text}")
+        if any(kw in text for kw in ["[download]", "完成", "错误", "暂停", "─────", "[Cookie]", "[代理]"]):
+            self.log_area.verticalScrollBar().setValue(self.log_area.verticalScrollBar().maximum())
+
+    def import_cookie(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "选择 Cookie 文件", "", "Cookie 文件 (*.txt *.json);;所有文件 (*.*)"
+        )
+        if file_path:
+            self.cookie_file = file_path
+            self.cb_cookie.setChecked(True)
+            self.lbl_cookie_file.setText(f"已加载：{os.path.basename(file_path)}")
+            ConfigManager.save_cookie_file(file_path)
+            self.append_log(f"已导入 Cookie 文件：{file_path}")
+
+    def choose_path(self):
+        folder = QFileDialog.getExistingDirectory(
+            self, "选择保存文件夹", self.download_path,
+            QFileDialog.Option.ShowDirsOnly | QFileDialog.Option.DontResolveSymlinks
+        )
+        if folder:
+            self.download_path = folder
+            self.lbl_path.setText(folder)
+            ConfigManager.save_download_path(folder)
+            self.append_log(f"保存路径已更新：{folder}")
+
+    def open_folder(self):
+        path = self.download_path
+        if not os.path.isdir(path):
+            QMessageBox.warning(self, "提示", f"文件夹不存在：\n{path}")
+            return
+        try:
+            if platform.system() == 'Windows':
+                os.startfile(path)
+            elif platform.system() == 'Darwin':
+                subprocess.call(['open', path])
+            else:
+                subprocess.call(['xdg-open', path])
+            self.append_log(f"已打开文件夹：{path}")
+        except Exception as e:
+            QMessageBox.warning(self, "错误", f"无法打开文件夹：\n{str(e)}")
+
     # ================== 更新相关 ==================
     def check_app_update(self):
         def fetch():
@@ -483,152 +672,12 @@ class MainWindow(QWidget):
         self.lbl_latest.setStyleSheet(style)
         self.lbl_latest.setText(text)
 
-    # ================== Cookie ==================
-    def import_cookie(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "选择 Cookie 文件", "", "Cookie 文件 (*.txt *.json);;所有文件 (*.*)"
-        )
-        if file_path:
-            self.cookie_file = file_path
-            self.cb_cookie.setChecked(True)
-            self.lbl_cookie_file.setText(f"已加载：{os.path.basename(file_path)}")
-            ConfigManager.save_cookie_file(file_path)
-            self.append_log(f"已导入 Cookie 文件：{file_path}")
-
-    # ================== 路径相关 ==================
-    def choose_path(self):
-        folder = QFileDialog.getExistingDirectory(
-            self, "选择保存文件夹", self.download_path,
-            QFileDialog.Option.ShowDirsOnly | QFileDialog.Option.DontResolveSymlinks
-        )
-        if folder:
-            self.download_path = folder
-            self.lbl_path.setText(folder)
-            ConfigManager.save_download_path(folder)
-            self.append_log(f"保存路径已更新：{folder}")
-
-    def open_folder(self):
-        path = self.download_path
-        if not os.path.isdir(path):
-            QMessageBox.warning(self, "提示", f"文件夹不存在：\n{path}")
-            return
-        try:
-            if platform.system() == 'Windows':
-                os.startfile(path)
-            elif platform.system() == 'Darwin':
-                subprocess.call(['open', path])
-            else:
-                subprocess.call(['xdg-open', path])
-            self.append_log(f"已打开文件夹：{path}")
-        except Exception as e:
-            QMessageBox.warning(self, "错误", f"无法打开文件夹：\n{str(e)}")
-
-    # ================== 下载核心逻辑 ==================
-    def toggle_main(self):
-        raw_text = self.edit_url.toPlainText().strip()
-        if not raw_text:
-            QMessageBox.warning(self, "提示", "请至少输入一个链接")
-            return
-
-        urls = [line.strip() for line in raw_text.splitlines() if line.strip().startswith(('http://', 'https://'))]
-        if not urls:
-            QMessageBox.warning(self, "提示", "没有找到有效的 YouTube 链接")
-            return
-
-        is_channel = any(x in urls[0].lower() for x in ['/channel/', '/@', '/c/', '/user/'])
-        if is_channel and self.cb_playlist.isChecked() and len(urls) == 1:
-            reply = QMessageBox.question(
-                self, "频道批量下载警告",
-                "检测到频道链接 + 已勾选“下载整个播放列表”，这将下载该频道所有视频（可能数量巨大），确定继续吗？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
-            )
-            if reply == QMessageBox.StandardButton.No:
-                return
-
-        quality = self.combo_quality.currentText()
-        playlist = self.cb_playlist.isChecked()
-        use_cookie = self.cb_cookie.isChecked()
-        cookie_file = self.cookie_file if use_cookie else None
-
-        if self.worker and self.worker.isRunning():
-            self.worker.request_stop()
-            self.btn_main.setText("继续下载")
-            self.append_log("已请求暂停当前任务...")
-            return
-
-        if self.pending_urls or self.total_count == 0:
-            self.pending_urls = urls[1:] if len(urls) > 1 else []
-            self.total_count = len(urls)
-            self.finished_count = 0
-
-        self.start_next_download(urls[0], quality, playlist, cookie_file)
-
-    def start_next_download(self, url, quality, playlist, cookie_file):
-        self.worker = DownloadWorker(url, self.download_path, quality, playlist, cookie_file)
-        self.worker.log.connect(self.append_log)
-        self.worker.status.connect(self.lbl_status.setText)
-        self.worker.current_file.connect(lambda f: self.lbl_file.setText(f"当前文件：{f}"))
-        self.worker.finished.connect(self.on_one_finished)
-
-        self.append_log(f"───── 开始 ({self.finished_count + 1}/{self.total_count}) ─────")
-        self.append_log(f"链接：{url}")
-        self.lbl_progress.setText(f"进度：{self.finished_count + 1} / {self.total_count}")
-        self.worker.start()
-        self.btn_main.setText("暂停当前")
-        self.btn_cancel.setEnabled(True)
-        self.lbl_status.setText(f"正在下载 ({self.finished_count + 1}/{self.total_count})")
-
-    def on_one_finished(self, success, msg):
-        self.append_log(f"───── {msg} ─────")
-        self.finished_count += 1
-        self.lbl_progress.setText(f"进度：{self.finished_count} / {self.total_count}")
-
-        if self.finished_count >= self.total_count:
-            self.append_log("所有任务处理完毕")
-            self.lbl_status.setText("全部完成")
-            if success:
-                QMessageBox.information(self, "完成", f"已处理 {self.total_count} 个任务")
-            self.reset_ui()
-            self.pending_urls = []
-        else:
-            if self.pending_urls:
-                next_url = self.pending_urls.pop(0)
-                quality = self.combo_quality.currentText()
-                playlist = self.cb_playlist.isChecked()
-                cookie_file = self.cookie_file if self.cb_cookie.isChecked() else None
-                self.start_next_download(next_url, quality, playlist, cookie_file)
-            else:
-                self.reset_ui()
-
-    def cancel_all(self):
-        if self.worker and self.worker.isRunning():
-            self.worker.request_stop()
-            self.worker.wait(3000)
-        self.pending_urls = []
-        self.reset_ui()
-        self.append_log("全部任务已取消")
-
-    def reset_ui(self):
-        self.btn_main.setText("开始下载")
-        self.btn_cancel.setEnabled(False)
-        self.lbl_status.setText("就绪")
-        self.lbl_progress.setText("进度： - / - ")
-        self.lbl_file.setText("当前文件： - ")
-
-    def append_log(self, text):
-        ts = datetime.datetime.now().strftime("%H:%M:%S")
-        self.log_area.append(f"[{ts}] {text}")
-        if any(kw in text for kw in ["[download]", "完成", "错误", "暂停", "─────", "[Cookie]"]):
-            self.log_area.verticalScrollBar().setValue(self.log_area.verticalScrollBar().maximum())
-
 
 # ================== 自定义事件类 ==================
 class AppUpdateEvent(QEvent):
     def __init__(self, latest):
         super().__init__(QEvent.Type(QEvent.Type.User.value + 1))
         self.latest = latest
-
 
 class UpdateVersionEvent(QEvent):
     def __init__(self, latest):
