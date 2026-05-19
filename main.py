@@ -32,7 +32,7 @@ GITHUB_RELEASES_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest"
 APP_GITHUB_REPO = "https://github.com/secure-artifacts/YoutubeDLT"
 APP_RELEASES_URL = f"{APP_GITHUB_REPO}/releases/latest"
 APP_GITHUB_API_URL = f"https://api.github.com/repos/secure-artifacts/YoutubeDLT/releases/latest"
-APP_CURRENT_VERSION = "2.0.27"
+APP_CURRENT_VERSION = "2.0.28"
 
 LOCK_FILE = os.path.join(CONFIG_DIR, "app.lock")
 
