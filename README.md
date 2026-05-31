@@ -1,4 +1,4 @@
-如果软件打不开，请删除用户路径下的文件夹：C:\Users\用户\.youtube_downloader
+如果软件打不开，请删除用户路径下的文件夹：C:\Users\用户\\.youtube_downloader
 ## AI Assistant Support
 
 You can send this page to an AI assistant:
